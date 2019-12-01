@@ -1,5 +1,5 @@
 fn fuel(mass: i64) -> i64 {
-    (((mass as f64) / 3.0).floor() - 2.0) as i64
+    mass / 3 - 2
 }
 
 fn recursive_fuel(mass: i64, acc: i64) -> i64 {
