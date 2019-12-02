@@ -1,3 +1,5 @@
+use itertools::iproduct;
+
 fn parse(input: &str) -> impl Iterator<Item = i64> + '_ {
     input
         .split(",")
@@ -39,8 +41,7 @@ pub fn star_one(input: &str) -> i64 {
 pub fn star_two(input: &str) -> i64 {
     let program: Vec<i64> = parse(input).collect();
 
-    let (noun, verb) = (0..=99)
-        .flat_map(|noun| (0..=99).map(move |verb| (noun, verb)))
+    let (noun, verb) = iproduct!((0..=99), (0..=99))
         .find(|&(noun, verb)| {
             let mut modified_program = program.clone();
             modified_program[1] = noun;
