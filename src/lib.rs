@@ -1,4 +1,6 @@
-#![allow(dead_code)]
+use std::str::FromStr;
+
+#[allow(dead_code, unused_imports)]
 mod day01;
 mod day02;
 mod day03;
@@ -24,6 +26,52 @@ mod day22;
 mod day23;
 mod day24;
 
+/// Parse lines of text into custom types.
+///
+/// Each line is treated as parsable after trimming.
+///
+/// **Note:** Panics if any parsing fails
+fn parse_lines<T>(input: &str) -> impl Iterator<Item = T> + '_
+where
+    T: FromStr + std::fmt::Debug,
+    <T as FromStr>::Err: std::fmt::Debug,
+{
+    input
+        .lines()
+        .map(str::trim)
+        .filter(|l| l.len() > 0)
+        .map(|l| {
+            l.parse().expect(&format!(
+                "Expected to be able to parse `{:?}` as `{:?}`",
+                l,
+                std::any::type_name::<T>()
+            ))
+        })
+}
+
+/// Parse whitespace separated custom types.
+///
+/// Each unit separated by whitespace is treated as parsable after trimming.
+///
+/// **Note:** Panics if any parsing fails
+fn parse_whitespace_separated<T>(input: &str) -> impl Iterator<Item = T> + '_
+where
+    T: FromStr + std::fmt::Debug,
+    <T as FromStr>::Err: std::fmt::Debug,
+{
+    input
+        .split_whitespace()
+        .map(str::trim)
+        .filter(|l| l.len() > 0)
+        .map(|l| {
+            l.parse().expect(&format!(
+                "Expected to be able to parse `{:?}` as `{:?}`",
+                l,
+                std::any::type_name::<T>()
+            ))
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs::File;
@@ -35,6 +83,30 @@ mod tests {
         f.read_to_string(&mut input).expect("Unable to read string");
 
         input
+    }
+
+    #[test]
+    fn test_parse_lines() {
+        use crate::parse_lines;
+
+        let expected: Vec<usize> = vec![12_usize, 24, 301, 123123];
+
+        assert_eq!(
+            parse_lines::<usize>("12\n 24   \n 301 \n 123123 \n").collect::<Vec<_>>(),
+            expected
+        );
+    }
+
+    #[test]
+    fn test_parse_whitespace_separated() {
+        use crate::parse_whitespace_separated;
+
+        let expected: Vec<usize> = vec![12_usize, 24, 301, 123123];
+
+        assert_eq!(
+            parse_whitespace_separated::<usize>("12   24   \n301 \t 123123 \n").collect::<Vec<_>>(),
+            expected
+        );
     }
 
     #[test]

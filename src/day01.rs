@@ -1,3 +1,5 @@
+use crate::parse_lines;
+
 fn fuel(mass: i64) -> i64 {
     mass / 3 - 2
 }
@@ -12,20 +14,12 @@ fn recursive_fuel(mass: i64, acc: i64) -> i64 {
     }
 }
 
-fn parse(input: &str) -> impl Iterator<Item = i64> + '_ {
-    input
-        .lines()
-        .map(|line| line.trim())
-        .filter(|l| l.len() > 0)
-        .map(|value| value.parse().expect("Expected only numbers"))
-}
-
 pub fn star_one(input: &str) -> i64 {
-    parse(input).map(fuel).sum()
+    parse_lines(input).map(fuel).sum()
 }
 
 pub fn star_two(input: &str) -> i64 {
-    parse(input).map(|m| recursive_fuel(m, 0)).sum()
+    parse_lines(input).map(|m| recursive_fuel(m, 0)).sum()
 }
 
 #[cfg(test)]
