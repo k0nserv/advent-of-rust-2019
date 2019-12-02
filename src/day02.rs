@@ -1,11 +1,8 @@
+use crate::parse_custom_separated;
 use itertools::iproduct;
 
 fn parse(input: &str) -> impl Iterator<Item = i64> + '_ {
-    input
-        .split(",")
-        .map(str::trim)
-        .filter(|v| v.len() > 0)
-        .map(|value| value.parse().expect("Expect only parsable numbers"))
+    parse_custom_separated(input, ",")
 }
 
 fn run_until_halt(memory: Vec<i64>) -> i64 {

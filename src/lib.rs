@@ -72,6 +72,29 @@ where
         })
 }
 
+/// Parse custom separator separated custom types.
+///
+/// Each unit separated by a specific separator is treated as parsable after trimming.
+///
+/// **Note:** Panics if any parsing fails
+fn parse_custom_separated<'a, T>(input: &'a str, separator: &'a str) -> impl Iterator<Item = T> + 'a
+where
+    T: FromStr + std::fmt::Debug,
+    <T as FromStr>::Err: std::fmt::Debug,
+{
+    input
+        .split(separator)
+        .map(str::trim)
+        .filter(|l| l.len() > 0)
+        .map(|l| {
+            l.parse().expect(&format!(
+                "Expected to be able to parse `{:?}` as `{:?}`",
+                l,
+                std::any::type_name::<T>()
+            ))
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs::File;
@@ -105,6 +128,18 @@ mod tests {
 
         assert_eq!(
             parse_whitespace_separated::<usize>("12   24   \n301 \t 123123 \n").collect::<Vec<_>>(),
+            expected
+        );
+    }
+
+    #[test]
+    fn test_parse_custom_separated() {
+        use crate::parse_custom_separated;
+
+        let expected: Vec<usize> = vec![12_usize, 24, 301, 123123];
+
+        assert_eq!(
+            parse_custom_separated::<usize>("12, 24,    301, \t 123123, ", ",").collect::<Vec<_>>(),
             expected
         );
     }
