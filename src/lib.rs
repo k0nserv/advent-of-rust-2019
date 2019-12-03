@@ -165,6 +165,26 @@ mod tests {
     }
 
     #[test]
+    fn solve_day03() {
+        use crate::day03::{star_one, star_two};
+
+        let input = load_file("day03.txt");
+
+        assert_eq!(star_one(&input), 865);
+        assert_eq!(star_two(&input), 35038);
+    }
+
+    #[test]
+    fn solve_day04() {
+        use crate::day04::{star_one, star_two};
+
+        let input = load_file("day04.txt");
+
+        assert_eq!(star_one(&input), 1);
+        assert_eq!(star_two(&input), 1);
+    }
+
+    #[test]
     fn solve_day05() {
         use crate::day05::{star_one, star_two};
 
