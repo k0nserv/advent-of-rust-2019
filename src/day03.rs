@@ -129,11 +129,10 @@ pub fn star_one(input: &str) -> usize {
     let wires: Vec<_> = wire(&paths);
     assert!(wires.len() == 2, "This only works with two wires");
     let wires = &wires;
-    let intersections: Vec<_> = wires[0].intersection(&wires[1]).collect();
+    let intersections = wires[0].intersection(&wires[1]);
 
     intersections
-        .iter()
-        .filter_map(|&point| {
+        .filter_map(|point| {
             if &point.location == &CENTER {
                 None
             } else {
