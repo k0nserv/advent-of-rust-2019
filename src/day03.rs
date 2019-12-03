@@ -4,7 +4,8 @@ use std::str::FromStr;
 
 use crate::parse_custom_separated;
 
-const CENTER: i64 = 0;
+type Point = (i64, i64);
+const CENTER: Point = (0, 0);
 
 #[derive(Debug)]
 enum Direction {
@@ -35,6 +36,17 @@ struct Step {
     steps: usize,
 }
 
+impl Step {
+    fn dir(&self) -> Point {
+        match self.direction {
+            Direction::R => (1, 0),
+            Direction::U => (0, -1),
+            Direction::L => (-1, 0),
+            Direction::D => (0, 1),
+        }
+    }
+}
+
 impl FromStr for Step {
     type Err = String;
 
@@ -48,7 +60,6 @@ impl FromStr for Step {
 }
 
 type Path = Vec<Step>;
-type Point = (i64, i64);
 
 fn manhattan_distance(origin: &Point, point: &Point) -> usize {
     ((origin.0 as i64 - point.0 as i64).abs() + (origin.1 as i64 - point.1 as i64).abs()) as usize
@@ -84,50 +95,20 @@ fn wire(paths: &[Path]) -> Vec<HashSet<OccupiedPoint>> {
         .iter()
         .map(|path| {
             let mut locations_occupied = HashSet::<OccupiedPoint>::new();
-            let mut location = (CENTER, CENTER);
+            let mut location = CENTER;
             let mut distance: usize = 0;
 
             for step in path {
                 let steps = step.steps as i64;
-
-                match step.direction {
-                    Direction::R => {
-                        for x in 0..steps {
-                            locations_occupied.insert(OccupiedPoint::new(
-                                (location.0 + x, location.1),
-                                distance + x as usize,
-                            ));
-                        }
-                        location = (location.0 + steps, location.1);
-                    }
-                    Direction::L => {
-                        for x in 0..steps {
-                            locations_occupied.insert(OccupiedPoint::new(
-                                (location.0 - x, location.1),
-                                distance + x as usize,
-                            ));
-                        }
-                        location = (location.0 - steps, location.1);
-                    }
-                    Direction::U => {
-                        for y in 0..steps {
-                            locations_occupied.insert(OccupiedPoint::new(
-                                (location.0, location.1 - y),
-                                distance + y as usize,
-                            ));
-                        }
-                        location = (location.0, location.1 - steps);
-                    }
-                    Direction::D => {
-                        for y in 0..steps {
-                            locations_occupied.insert(OccupiedPoint::new(
-                                (location.0, location.1 + y),
-                                distance + y as usize,
-                            ));
-                        }
-                        location = (location.0, location.1 + steps);
-                    }
+                let dir = step.dir();
+                for n in 0..steps {
+                    locations_occupied.insert(OccupiedPoint::new(
+                        (location.0 + dir.0 * n, location.1 + dir.1 * n),
+                        distance + n as usize,
+                    ));
                 }
+
+                location = (location.0 + steps * dir.0, location.1 + steps * dir.1);
 
                 distance += steps as usize;
             }
@@ -139,7 +120,7 @@ fn wire(paths: &[Path]) -> Vec<HashSet<OccupiedPoint>> {
     wires
 }
 
-pub fn star_one(input: &str) -> i64 {
+pub fn star_one(input: &str) -> usize {
     let paths: Vec<Path> = input
         .lines()
         .map(|line| parse_custom_separated(line, ",").collect())
@@ -153,14 +134,14 @@ pub fn star_one(input: &str) -> i64 {
     intersections
         .iter()
         .filter_map(|&point| {
-            if &point.location == &(CENTER, CENTER) {
+            if &point.location == &CENTER {
                 None
             } else {
-                Some(manhattan_distance(&(CENTER, CENTER), &point.location))
+                Some(manhattan_distance(&CENTER, &point.location))
             }
         })
         .min()
-        .expect("") as i64
+        .expect("There should be at least one intersection")
 }
 
 pub fn star_two(input: &str) -> usize {
@@ -175,7 +156,7 @@ pub fn star_two(input: &str) -> usize {
 
     wires[0]
         .iter()
-        .filter(|&point| point.location != (CENTER, CENTER))
+        .filter(|&point| point.location != CENTER)
         .filter_map(|point| {
             wires[1]
                 .get(point)
@@ -183,7 +164,7 @@ pub fn star_two(input: &str) -> usize {
         })
         .min_by(|point, other| point.distance.cmp(&other.distance))
         .map(|p| p.distance)
-        .expect("")
+        .expect("There should be at least one intersection")
 }
 
 #[cfg(test)]
