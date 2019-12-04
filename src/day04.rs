@@ -28,15 +28,9 @@ impl Iterator for DigitIterator {
 }
 
 fn is_valid_password_part1(password: usize) -> bool {
-    let last_idx = (password as f64).log10().floor() as usize;
-
     let digits: Vec<_> = DigitIterator::new(password).collect();
     let has_adjacent_numbers = digits.windows(2).any(|v| v[0] == v[1]);
-
-    let decreases = DigitIterator::new(password)
-        .zip(DigitIterator::new(password).cycle().skip(1))
-        .enumerate()
-        .all(|(idx, (digit, next_digit))| next_digit <= digit || idx >= last_idx);
+    let decreases = digits.windows(2).all(|v| v[1] <= v[0]);
 
     has_adjacent_numbers && decreases
 }
@@ -44,6 +38,8 @@ fn is_valid_password_part1(password: usize) -> bool {
 fn is_valid_password_part2(password: usize) -> bool {
     let last_idx = (password as f64).log10().floor() as usize;
 
+    let digits: Vec<_> = DigitIterator::new(password).collect();
+    let decreases = digits.windows(2).all(|v| v[1] <= v[0]);
     let sequence_lengths = DigitIterator::new(password)
         .enumerate()
         .fold(
@@ -68,11 +64,6 @@ fn is_valid_password_part2(password: usize) -> bool {
             },
         )
         .0;
-
-    let decreases = DigitIterator::new(password)
-        .zip(DigitIterator::new(password).cycle().skip(1))
-        .enumerate()
-        .all(|(idx, (digit, next_digit))| next_digit <= digit || idx >= last_idx);
 
     sequence_lengths.into_iter().any(|length| length == 2) && decreases
 }
