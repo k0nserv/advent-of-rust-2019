@@ -1,19 +1,14 @@
 use core::ops::RangeInclusive;
-use std::ops::{Add, Sub};
 
 #[derive(Debug, Copy, Clone)]
 struct DigitIterator {
-    power: f64,
     number: f64,
-    done: bool,
 }
 
 impl DigitIterator {
     fn new(number: usize) -> Self {
         Self {
-            done: false,
             number: number as f64,
-            power: 0.0,
         }
     }
 }
@@ -34,50 +29,52 @@ impl Iterator for DigitIterator {
 
 fn is_valid_password_part1(password: usize) -> bool {
     let last_idx = (password as f64).log10().floor() as usize;
+
     let digits: Vec<_> = DigitIterator::new(password).collect();
-    let iterator = DigitIterator::new(password)
-        .zip(DigitIterator::new(password).cycle().skip(1))
-        .enumerate();
     let has_adjacent_numbers = digits.windows(2).any(|v| v[0] == v[1]);
-    let decreases = iterator
-        .clone()
+
+    let decreases = DigitIterator::new(password)
+        .zip(DigitIterator::new(password).cycle().skip(1))
+        .enumerate()
         .all(|(idx, (digit, next_digit))| next_digit <= digit || idx >= last_idx);
 
-    let result = has_adjacent_numbers && decreases;
-
-    result
+    has_adjacent_numbers && decreases
 }
 
 fn is_valid_password_part2(password: usize) -> bool {
     let last_idx = (password as f64).log10().floor() as usize;
-    let iterator = DigitIterator::new(password)
+
+    let sequence_lengths = DigitIterator::new(password)
+        .enumerate()
+        .fold(
+            (vec![], 0, None),
+            |(sequence_lengths, current_length, last_digit), (idx, d)| {
+                if last_digit.map(|last| last != d).unwrap_or(false) {
+                    // Digit differs from last, start of new sequence
+                    let mut new_lengths = sequence_lengths.clone();
+                    new_lengths.push(current_length);
+
+                    (new_lengths, 1, Some(d))
+                } else if idx == last_idx {
+                    // At the end of digits, special case to record current sequence
+                    let mut new_lengths = sequence_lengths.clone();
+                    new_lengths.push(current_length + 1);
+
+                    (new_lengths, 0, None)
+                } else {
+                    // In the middle of sequence
+                    (sequence_lengths, current_length + 1, Some(d))
+                }
+            },
+        )
+        .0;
+
+    let decreases = DigitIterator::new(password)
         .zip(DigitIterator::new(password).cycle().skip(1))
-        .enumerate();
-
-    let sequence_lengths = DigitIterator::new(password).enumerate().fold(
-        (vec![], 0, None),
-        |(sequence_lengths, current_length, last_digit), (idx, d)| {
-            if last_digit.map(|last| last != d).unwrap_or(false) {
-                let mut new_lengths = sequence_lengths.clone();
-                new_lengths.push(current_length);
-
-                (new_lengths, 1, Some(d))
-            } else if idx == last_idx {
-                let mut new_lengths = sequence_lengths.clone();
-                new_lengths.push(current_length + 1);
-
-                (new_lengths, 0, None)
-            } else {
-                (sequence_lengths, current_length + 1, Some(d))
-            }
-        },
-    );
-
-    let decreases = iterator
-        .clone()
+        .enumerate()
         .all(|(idx, (digit, next_digit))| next_digit <= digit || idx >= last_idx);
 
-    sequence_lengths.0.iter().any(|&length| length == 2) && decreases
+    sequence_lengths.into_iter().any(|length| length == 2) && decreases
 }
 
 pub fn star_one(input: RangeInclusive<usize>) -> usize {
