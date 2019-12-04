@@ -177,11 +177,10 @@ mod tests {
     #[test]
     fn solve_day04() {
         use crate::day04::{star_one, star_two};
+        use core::ops::RangeInclusive;
 
-        let input = load_file("day04.txt");
-
-        assert_eq!(star_one(&input), 1);
-        assert_eq!(star_two(&input), 1);
+        assert_eq!(star_one(RangeInclusive::new(136760, 595730)), 1873);
+        assert_eq!(star_two(RangeInclusive::new(136760, 595730)), 1264);
     }
 
     #[test]
