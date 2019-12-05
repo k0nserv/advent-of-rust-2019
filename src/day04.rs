@@ -1,31 +1,5 @@
+use crate::DigitIterator;
 use core::ops::RangeInclusive;
-
-#[derive(Debug, Copy, Clone)]
-struct DigitIterator {
-    number: f64,
-}
-
-impl DigitIterator {
-    fn new(number: usize) -> Self {
-        Self {
-            number: number as f64,
-        }
-    }
-}
-
-impl Iterator for DigitIterator {
-    type Item = usize;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.number < 1.0 {
-            return None;
-        }
-        let digit = self.number % 10_f64;
-        self.number = (self.number / 10_f64).floor();
-
-        Some(digit as usize)
-    }
-}
 
 fn is_valid_password_part1(password: usize) -> bool {
     let digits: Vec<_> = DigitIterator::new(password).collect();

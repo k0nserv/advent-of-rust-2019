@@ -27,6 +27,33 @@ mod day22;
 mod day23;
 mod day24;
 
+#[derive(Debug, Copy, Clone)]
+pub struct DigitIterator {
+    number: f64,
+}
+
+impl DigitIterator {
+    fn new(number: usize) -> Self {
+        Self {
+            number: number as f64,
+        }
+    }
+}
+
+impl Iterator for DigitIterator {
+    type Item = usize;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.number < 1.0 {
+            return None;
+        }
+        let digit = self.number % 10_f64;
+        self.number = (self.number / 10_f64).floor();
+
+        Some(digit as usize)
+    }
+}
+
 fn time<F>(label: &str, closure: F)
 where
     F: Fn(),
@@ -211,8 +238,8 @@ mod tests {
 
         let input = load_file("day05.txt");
 
-        assert_eq!(star_one(&input), 1);
-        assert_eq!(star_two(&input), 1);
+        time("Day 05, Part 1", || assert_eq!(star_one(&input), 8332629));
+        time("Day 05, Part 2", || assert_eq!(star_two(&input), 8805067));
     }
 
     #[test]
