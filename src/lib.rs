@@ -1,4 +1,5 @@
 use std::str::FromStr;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[allow(dead_code, unused_imports)]
 mod day01;
@@ -25,6 +26,22 @@ mod day21;
 mod day22;
 mod day23;
 mod day24;
+
+fn time<F>(label: &str, closure: F)
+where
+    F: Fn(),
+{
+    let start = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+    closure();
+    let end = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+    let time = end - start;
+    println!(
+        "Time taken for {}: {}s and {}ns",
+        label,
+        time.as_secs(),
+        time.subsec_nanos()
+    );
+}
 
 /// Parse lines of text into custom types.
 ///
@@ -97,6 +114,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    use super::time;
     use std::fs::File;
     use std::io::Read;
 
@@ -150,8 +168,8 @@ mod tests {
 
         let input = load_file("day01.txt");
 
-        assert_eq!(star_one(&input), 3506577);
-        assert_eq!(star_two(&input), 5256960);
+        time("Day 01, Part 1", || assert_eq!(star_one(&input), 3506577));
+        time("Day 01, Part 2", || assert_eq!(star_two(&input), 5256960));
     }
 
     #[test]
@@ -160,8 +178,8 @@ mod tests {
 
         let input = load_file("day02.txt");
 
-        assert_eq!(star_one(&input), 3790689);
-        assert_eq!(star_two(&input), 6533);
+        time("Day 02, Part 1", || assert_eq!(star_one(&input), 3790689));
+        time("Day 02, Part 2", || assert_eq!(star_two(&input), 6533));
     }
 
     #[test]
@@ -170,8 +188,8 @@ mod tests {
 
         let input = load_file("day03.txt");
 
-        assert_eq!(star_one(&input), 865);
-        assert_eq!(star_two(&input), 35038);
+        time("Day 03, Part 1", || assert_eq!(star_one(&input), 865));
+        time("Day 03, Part 2", || assert_eq!(star_two(&input), 35038));
     }
 
     #[test]
@@ -179,8 +197,12 @@ mod tests {
         use crate::day04::{star_one, star_two};
         use core::ops::RangeInclusive;
 
-        assert_eq!(star_one(RangeInclusive::new(136760, 595730)), 1873);
-        assert_eq!(star_two(RangeInclusive::new(136760, 595730)), 1264);
+        time("Day 04, Part 1", || {
+            assert_eq!(star_one(RangeInclusive::new(136760, 595730)), 1873)
+        });
+        time("Day 04, Part 2", || {
+            assert_eq!(star_two(RangeInclusive::new(136760, 595730)), 1264)
+        });
     }
 
     #[test]

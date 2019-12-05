@@ -40,7 +40,8 @@ fn is_valid_password_part2(password: usize) -> bool {
 
     let digits: Vec<_> = DigitIterator::new(password).collect();
     let decreases = digits.windows(2).all(|v| v[1] <= v[0]);
-    let sequence_lengths = DigitIterator::new(password)
+    let sequence_lengths = digits
+        .into_iter()
         .enumerate()
         .fold(
             (vec![], 0, None),
