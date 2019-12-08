@@ -58,6 +58,21 @@ impl Instruction {
             _ => false,
         }
     }
+
+    fn is_input(&self) -> bool {
+        match self {
+            Self::Input(_) => true,
+            _ => false,
+        }
+    }
+
+    fn is_output(&self) -> bool {
+        match self {
+            Self::Output(_) => true,
+            _ => false,
+        }
+    }
+
     fn length(&self) -> usize {
         match self {
             Self::Op(_, _, _, _) | Self::Compare(_, _, _, _) => 4,
@@ -225,6 +240,107 @@ impl Computer {
             current_index = new_pc.unwrap_or_else(|| current_index + parsed_instruction.length());
 
             assert!(last_output.unwrap_or(0) == 0 || self.program[current_index] == 99);
+        }
+    }
+
+    pub fn output(&self) -> Option<isize> {
+        self.output
+    }
+
+    pub fn memory(&self) -> &[isize] {
+        &self.program
+    }
+
+    pub fn memory_mut(&mut self) -> &mut [isize] {
+        &mut self.program
+    }
+}
+
+pub struct PausableComputer {
+    initial_input: Option<isize>,
+    input: Option<Box<dyn Fn() -> Option<isize>>>,
+    output: Option<isize>,
+    program: Vec<isize>,
+    is_paused: bool,
+    did_halt: bool,
+    ip: usize,
+}
+
+impl PausableComputer {
+    pub fn new(program: Vec<isize>, initial_input: isize) -> Self {
+        PausableComputer {
+            initial_input: Some(initial_input),
+            input: None,
+            output: None,
+            program,
+            is_paused: false,
+            did_halt: false,
+            ip: 0,
+        }
+    }
+
+    pub fn is_paused(&self) -> bool {
+        self.is_paused
+    }
+
+    pub fn is_halted(&self) -> bool {
+        self.did_halt
+    }
+
+    pub fn set_input(&mut self, input: Box<dyn Fn() -> Option<isize>>) {
+        self.input = Some(input);
+    }
+
+    pub fn run_until_halt_or_paused(&mut self, stop_on_output: bool) {
+        while self.ip < self.program.len() {
+            let parsed_instruction = if self.ip < self.program.len() - 4 {
+                Instruction::parse(&self.program[self.ip..self.ip + 4])
+            } else {
+                Instruction::parse(&self.program[self.ip..])
+            };
+
+            if parsed_instruction.should_halt() {
+                self.did_halt = parsed_instruction.should_halt();
+                break;
+            }
+
+            if parsed_instruction.is_input() {
+                let next_input = if self.initial_input.is_some() {
+                    let i = self.initial_input;
+                    self.initial_input = None;
+                    i
+                } else {
+                    (self.input.as_ref().unwrap())()
+                };
+
+                match next_input {
+                    None => {
+                        self.is_paused = true;
+                        break;
+                    }
+                    Some(input) => {
+                        let (new_pc, new_last_output) =
+                            parsed_instruction.execute(&mut self.program, input);
+
+                        if new_last_output.is_some() {
+                            self.output = new_last_output;
+                        }
+                        self.ip = new_pc.unwrap_or_else(|| self.ip + parsed_instruction.length());
+
+                        self.is_paused = false;
+                    }
+                }
+            } else {
+                //  Input value doesn't matter here since Instruction isn't input
+                let (new_pc, new_last_output) = parsed_instruction.execute(&mut self.program, 0);
+                if new_last_output.is_some() {
+                    self.output = new_last_output;
+                }
+                self.ip = new_pc.unwrap_or_else(|| self.ip + parsed_instruction.length());
+                if parsed_instruction.is_output() && stop_on_output {
+                    break;
+                }
+            }
         }
     }
 
