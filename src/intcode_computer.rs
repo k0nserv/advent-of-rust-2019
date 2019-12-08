@@ -188,6 +188,7 @@ impl Instruction {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Computer {
     input: isize,
     output: Option<isize>,
@@ -229,5 +230,13 @@ impl Computer {
 
     pub fn output(&self) -> Option<isize> {
         self.output
+    }
+
+    pub fn memory(&self) -> &[isize] {
+        &self.program
+    }
+
+    pub fn memory_mut(&mut self) -> &mut [isize] {
+        &mut self.program
     }
 }

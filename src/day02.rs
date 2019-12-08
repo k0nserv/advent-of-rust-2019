@@ -1,9 +1,6 @@
+use crate::intcode_computer::Computer;
 use crate::parse_custom_separated;
 use itertools::iproduct;
-
-fn parse(input: &str) -> impl Iterator<Item = i64> + '_ {
-    parse_custom_separated(input, ",")
-}
 
 fn run_until_halt(memory: Vec<i64>) -> i64 {
     let mut numbers: Vec<i64> = memory;
@@ -30,21 +27,27 @@ fn run_until_halt(memory: Vec<i64>) -> i64 {
     numbers[0]
 }
 
-pub fn star_one(input: &str) -> i64 {
-    let numbers: Vec<i64> = parse(input).collect();
-    run_until_halt(numbers)
+pub fn star_one(input: &str) -> isize {
+    let program = parse_custom_separated::<isize>(input, ",").collect();
+    let mut computer = Computer::new(program, 1);
+    computer.run_until_halt();
+
+    computer.memory()[0]
 }
 
-pub fn star_two(input: &str) -> i64 {
-    let program: Vec<i64> = parse(input).collect();
+pub fn star_two(input: &str) -> isize {
+    let program = parse_custom_separated::<isize>(input, ",").collect();
+    let computer = Computer::new(program, 1);
 
     let (noun, verb) = iproduct!((0..=99), (0..=99))
         .find(|&(noun, verb)| {
-            let mut modified_program = program.clone();
-            modified_program[1] = noun;
-            modified_program[2] = verb;
+            let mut modified_computer = computer.clone();
+            modified_computer.memory_mut()[1] = noun;
+            modified_computer.memory_mut()[2] = verb;
 
-            run_until_halt(modified_program) == 19690720
+            modified_computer.run_until_halt();
+
+            modified_computer.memory()[0] == 19690720
         })
         .expect("There should be a noun and verb that results in the output `19690720`");
 
