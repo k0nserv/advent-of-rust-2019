@@ -30,12 +30,14 @@ mod intcode_computer;
 
 #[derive(Debug, Copy, Clone)]
 pub struct DigitIterator {
+    initial_value_is_zero: bool,
     number: f64,
 }
 
 impl DigitIterator {
     fn new(number: usize) -> Self {
         Self {
+            initial_value_is_zero: number == 0,
             number: number as f64,
         }
     }
@@ -45,13 +47,20 @@ impl Iterator for DigitIterator {
     type Item = usize;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.number < 1.0 {
+        if self.number < 1.0 && !self.initial_value_is_zero {
             return None;
         }
-        let digit = self.number % 10_f64;
-        self.number = (self.number / 10_f64).floor();
 
-        Some(digit as usize)
+        if self.initial_value_is_zero {
+            self.initial_value_is_zero = false;
+
+            Some(0)
+        } else {
+            let digit = self.number % 10_f64;
+            self.number = (self.number / 10_f64).floor();
+
+            Some(digit as usize)
+        }
     }
 }
 
@@ -269,8 +278,8 @@ mod tests {
 
         let input = load_file("day08.txt");
 
-        assert_eq!(star_one(&input), 1);
-        assert_eq!(star_two(&input), 1);
+        assert_eq!(star_one(&input, 25, 6), 2975);
+        assert_eq!(star_two(&input, 25, 6), "1111010010111001001011110\n1000010010100101001010000\n1110011110100101001011100\n1000010010111001001010000\n1000010010101001001010000\n1111010010100100110011110");
     }
 
     #[test]
