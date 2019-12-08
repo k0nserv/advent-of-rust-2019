@@ -203,92 +203,33 @@ impl Instruction {
     }
 }
 
-#[derive(Debug, Clone)]
 pub struct Computer {
-    input: isize,
+    static_input: Option<isize>,
+    dynamic_input: Option<Box<dyn Fn() -> Option<isize>>>,
     output: Option<isize>,
     program: Vec<isize>,
-}
-
-impl Computer {
-    pub fn new(program: Vec<isize>, input: isize) -> Self {
-        Computer {
-            input,
-            output: None,
-            program,
-        }
-    }
-
-    pub fn run_until_halt(&mut self) {
-        let mut current_index = 0;
-        let mut last_output = None;
-
-        while current_index < self.program.len() {
-            let parsed_instruction = if current_index < self.program.len() - 4 {
-                Instruction::parse(&self.program[current_index..current_index + 4])
-            } else {
-                Instruction::parse(&self.program[current_index..])
-            };
-
-            if parsed_instruction.should_halt() {
-                break;
-            }
-
-            let (new_pc, new_last_output) =
-                parsed_instruction.execute(&mut self.program, self.input);
-            self.output = new_last_output;
-            current_index = new_pc.unwrap_or_else(|| current_index + parsed_instruction.length());
-
-            assert!(last_output.unwrap_or(0) == 0 || self.program[current_index] == 99);
-        }
-    }
-
-    pub fn output(&self) -> Option<isize> {
-        self.output
-    }
-
-    pub fn memory(&self) -> &[isize] {
-        &self.program
-    }
-
-    pub fn memory_mut(&mut self) -> &mut [isize] {
-        &mut self.program
-    }
-}
-
-pub struct PausableComputer {
-    initial_input: Option<isize>,
-    input: Option<Box<dyn Fn() -> Option<isize>>>,
-    output: Option<isize>,
-    program: Vec<isize>,
-    is_paused: bool,
     did_halt: bool,
     ip: usize,
 }
 
-impl PausableComputer {
+impl Computer {
     pub fn new(program: Vec<isize>, initial_input: isize) -> Self {
-        PausableComputer {
-            initial_input: Some(initial_input),
-            input: None,
+        Self {
+            static_input: Some(initial_input),
+            dynamic_input: None,
             output: None,
             program,
-            is_paused: false,
             did_halt: false,
             ip: 0,
         }
-    }
-
-    pub fn is_paused(&self) -> bool {
-        self.is_paused
     }
 
     pub fn is_halted(&self) -> bool {
         self.did_halt
     }
 
-    pub fn set_input(&mut self, input: Box<dyn Fn() -> Option<isize>>) {
-        self.input = Some(input);
+    pub fn set_dynamic_input(&mut self, input: Box<dyn Fn() -> Option<isize>>) {
+        self.dynamic_input = Some(input);
     }
 
     pub fn run_until_halt_or_paused(&mut self, stop_on_output: bool) {
@@ -300,22 +241,16 @@ impl PausableComputer {
             };
 
             if parsed_instruction.should_halt() {
-                self.did_halt = parsed_instruction.should_halt();
+                self.did_halt = true;
                 break;
             }
 
             if parsed_instruction.is_input() {
-                let next_input = if self.initial_input.is_some() {
-                    let i = self.initial_input;
-                    self.initial_input = None;
-                    i
-                } else {
-                    (self.input.as_ref().unwrap())()
-                };
+                let next_input = self.read_input();
 
                 match next_input {
                     None => {
-                        self.is_paused = true;
+                        // We need to wait
                         break;
                     }
                     Some(input) => {
@@ -326,8 +261,6 @@ impl PausableComputer {
                             self.output = new_last_output;
                         }
                         self.ip = new_pc.unwrap_or_else(|| self.ip + parsed_instruction.length());
-
-                        self.is_paused = false;
                     }
                 }
             } else {
@@ -354,5 +287,17 @@ impl PausableComputer {
 
     pub fn memory_mut(&mut self) -> &mut [isize] {
         &mut self.program
+    }
+
+    fn read_input(&mut self) -> Option<isize> {
+        if self.static_input.is_some() {
+            let i = self.static_input;
+            if self.dynamic_input.is_some() {
+                self.static_input = None;
+            }
+            i
+        } else {
+            (self.dynamic_input.as_ref().unwrap())()
+        }
     }
 }

@@ -30,22 +30,21 @@ fn run_until_halt(memory: Vec<i64>) -> i64 {
 pub fn star_one(input: &str) -> isize {
     let program = parse_custom_separated::<isize>(input, ",").collect();
     let mut computer = Computer::new(program, 1);
-    computer.run_until_halt();
+    computer.run_until_halt_or_paused(false);
 
     computer.memory()[0]
 }
 
 pub fn star_two(input: &str) -> isize {
-    let program = parse_custom_separated::<isize>(input, ",").collect();
-    let computer = Computer::new(program, 1);
+    let program: Vec<_> = parse_custom_separated::<isize>(input, ",").collect();
 
     let (noun, verb) = iproduct!((0..=99), (0..=99))
         .find(|&(noun, verb)| {
-            let mut modified_computer = computer.clone();
+            let mut modified_computer = Computer::new(program.clone(), 1);
             modified_computer.memory_mut()[1] = noun;
             modified_computer.memory_mut()[2] = verb;
 
-            modified_computer.run_until_halt();
+            modified_computer.run_until_halt_or_paused(false);
 
             modified_computer.memory()[0] == 19690720
         })

@@ -260,7 +260,7 @@ mod tests {
         let input = load_file("day07.txt");
 
         time("Day 07, Part 1", || assert_eq!(star_one(&input), 46014));
-        time("Day 08, Part 2", || assert_eq!(star_two(&input), 19581200));
+        time("Day 07, Part 2", || assert_eq!(star_two(&input), 19581200));
     }
 
     #[test]
