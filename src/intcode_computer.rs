@@ -12,6 +12,7 @@ impl Parameter {
         match mode {
             0 => Self::Position(value as usize),
             1 => Self::Immediate(value),
+            2 => Self::Relative(value),
             _ => panic!("Unsupported paramter mode: `{}`", mode),
         }
     }
@@ -20,8 +21,16 @@ impl Parameter {
         match self {
             &Self::Immediate(value) => value,
             &Self::Position(position) => memory[position],
-            &Self::Relative(position) => {
-                memory[((relative_base_offset as isize) + position) as usize]
+            &Self::Relative(position) => memory[self.address(relative_base_offset)],
+        }
+    }
+
+    fn address(&self, relative_base_offset: usize) -> usize {
+        match self {
+            &Self::Position(position) => position,
+            &Self::Relative(position) => ((relative_base_offset as isize) + position) as usize,
+            &Self::Immediate(_) => {
+                panic!("Attempted to use an immediate mode paramter for addressing")
             }
         }
     }
@@ -47,13 +56,13 @@ enum ComparisonOp {
 
 #[derive(Debug)]
 enum Instruction {
-    Op(Op, Parameter, Parameter, usize), // Used for Add and Multiply
-    Input(usize),                        // 3
-    Output(Parameter),                   // 4
+    Op(Op, Parameter, Parameter, Parameter), // Used for Add and Multiply
+    Input(Parameter),                        // 3
+    Output(Parameter),                       // 4
     ConditionalJump(JumpCondition, Parameter, Parameter), // Used for JumpIfTrue and JumpIfFalse
-    Compare(ComparisonOp, Parameter, Parameter, usize), // Used for LessThan and Equals
-    RelativeBaseAdjust(Parameter),       // 9
-    Halt,                                // 99
+    Compare(ComparisonOp, Parameter, Parameter, Parameter), // Used for LessThan and Equals
+    RelativeBaseAdjust(Parameter),           // 9
+    Halt,                                    // 99
 }
 
 impl Instruction {
@@ -100,27 +109,28 @@ impl Instruction {
         let hundreds_digit = digits.next().unwrap_or(0);
         let thousands_digit = digits.next().unwrap_or(0);
         let ten_thousands_digit = digits.next().unwrap_or(0);
-        assert!(
-            ten_thousands_digit == 0,
-            "Expected ten_thousands_digit to be 0 was `{}` in opcode `{}`",
-            ten_thousands_digit,
-            opcode
-        );
 
         match (tens_digit, ones_digit) {
             (_, 1) => Self::Op(
                 Op::Add,
                 Parameter::new(hundreds_digit, input[1]),
                 Parameter::new(thousands_digit, input[2]),
-                input[3] as usize,
+                Parameter::new(ten_thousands_digit, input[3]),
             ),
             (_, 2) => Self::Op(
                 Op::Multiply,
                 Parameter::new(hundreds_digit, input[1]),
                 Parameter::new(thousands_digit, input[2]),
-                input[3] as usize,
+                Parameter::new(ten_thousands_digit, input[3]),
             ),
-            (_, 3) => Self::Input(input[1] as usize),
+            (_, 3) => {
+                assert!(
+                    hundreds_digit != 1,
+                    "Immediate mode is not compatible with the Input opcode"
+                );
+
+                Self::Input(Parameter::new(hundreds_digit, input[1]))
+            }
             (_, 4) => Self::Output(Parameter::new(hundreds_digit, input[1])),
             (_, 5) => Self::ConditionalJump(
                 JumpCondition::IfTrue,
@@ -136,13 +146,13 @@ impl Instruction {
                 ComparisonOp::LessThan,
                 Parameter::new(hundreds_digit, input[1]),
                 Parameter::new(thousands_digit, input[2]),
-                input[3] as usize,
+                Parameter::new(ten_thousands_digit, input[3]),
             ),
             (_, 8) => Self::Compare(
                 ComparisonOp::Equal,
                 Parameter::new(hundreds_digit, input[1]),
                 Parameter::new(thousands_digit, input[2]),
-                input[3] as usize,
+                Parameter::new(ten_thousands_digit, input[3]),
             ),
             (0, 9) => Self::RelativeBaseAdjust(Parameter::new(hundreds_digit, input[1])),
             (9, 9) => Self::Halt,
@@ -157,10 +167,12 @@ enum ExecutionState {
     Continue,
 }
 
+const EXTENDED_MEMORY: [isize; 10_000] = [0; 10_000];
+
 pub struct Computer {
     static_input: Option<isize>,
     dynamic_input: Option<Box<dyn Fn() -> Option<isize>>>,
-    output: Option<isize>,
+    outputs: Vec<isize>,
     program: Vec<isize>,
     did_halt: bool,
     ip: usize,
@@ -169,10 +181,13 @@ pub struct Computer {
 
 impl Computer {
     pub fn new(program: Vec<isize>, initial_input: isize) -> Self {
+        let mut program = program;
+        program.extend(&EXTENDED_MEMORY[..]);
+
         Self {
             static_input: Some(initial_input),
             dynamic_input: None,
-            output: None,
+            outputs: vec![],
             program,
             did_halt: false,
             ip: 0,
@@ -209,8 +224,12 @@ impl Computer {
         }
     }
 
-    pub fn output(&self) -> Option<isize> {
-        self.output
+    pub fn last_output(&self) -> Option<isize> {
+        self.outputs.last().map(|v| *v)
+    }
+
+    pub fn all_outputs(&self) -> &[isize] {
+        &self.outputs
     }
 
     pub fn memory(&self) -> &[isize] {
@@ -244,10 +263,11 @@ impl Computer {
             Instruction::Op(op, arg1, arg2, arg3) => {
                 let a1 = arg1.value(&self.program, relative_base_offset);
                 let a2 = arg2.value(&self.program, relative_base_offset);
+                let a3 = arg3.address(relative_base_offset);
 
                 match op {
-                    Op::Add => self.program[*arg3] = a1 + a2,
-                    Op::Multiply => self.program[*arg3] = a1 * a2,
+                    Op::Add => self.program[a3] = a1 + a2,
+                    Op::Multiply => self.program[a3] = a1 * a2,
                 }
 
                 (None, None)
@@ -276,10 +296,11 @@ impl Computer {
             Instruction::Compare(op, arg1, arg2, arg3) => {
                 let a1 = arg1.value(&self.program, relative_base_offset);
                 let a2 = arg2.value(&self.program, relative_base_offset);
+                let a3 = arg3.address(relative_base_offset);
 
                 match op {
-                    ComparisonOp::LessThan => self.program[*arg3] = if a1 < a2 { 1 } else { 0 },
-                    ComparisonOp::Equal => self.program[*arg3] = if a1 == a2 { 1 } else { 0 },
+                    ComparisonOp::LessThan => self.program[a3] = if a1 < a2 { 1 } else { 0 },
+                    ComparisonOp::Equal => self.program[a3] = if a1 == a2 { 1 } else { 0 },
                 }
 
                 (None, None)
@@ -293,7 +314,8 @@ impl Computer {
                         (None, Some(ExecutionState::Pause))
                     }
                     Some(input) => {
-                        self.program[*arg1] = input;
+                        let a1 = arg1.address(relative_base_offset);
+                        self.program[a1 as usize] = input;
 
                         (None, None)
                     }
@@ -302,7 +324,7 @@ impl Computer {
             Instruction::Output(arg1) => {
                 let a1 = arg1.value(&self.program, relative_base_offset);
 
-                self.output = Some(a1);
+                self.outputs.push(a1);
 
                 if stop_on_output {
                     (None, Some(ExecutionState::Pause))

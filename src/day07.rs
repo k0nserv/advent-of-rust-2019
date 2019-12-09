@@ -48,7 +48,7 @@ fn thruster_signal(program: Vec<isize>, phase_settings: &[isize], feedback: bool
 
         for (idx, computer) in unhalted_computers {
             computer.run_until_halt_or_paused(true);
-            last_outputs.borrow_mut()[idx] = computer.output();
+            last_outputs.borrow_mut()[idx] = computer.last_output();
         }
 
         all_halted = computers.iter().all(|computer| computer.is_halted())
