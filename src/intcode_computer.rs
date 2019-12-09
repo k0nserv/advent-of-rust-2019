@@ -4,6 +4,7 @@ use crate::DigitIterator;
 enum Parameter {
     Immediate(isize),
     Position(usize),
+    Relative(isize),
 }
 
 impl Parameter {
@@ -15,10 +16,13 @@ impl Parameter {
         }
     }
 
-    fn value(&self, memory: &[isize]) -> isize {
+    fn value(&self, memory: &[isize], relative_base_offset: usize) -> isize {
         match self {
             &Self::Immediate(value) => value,
             &Self::Position(position) => memory[position],
+            &Self::Relative(position) => {
+                memory[((relative_base_offset as isize) + position) as usize]
+            }
         }
     }
 }
@@ -48,6 +52,7 @@ enum Instruction {
     Output(Parameter),                   // 4
     ConditionalJump(JumpCondition, Parameter, Parameter), // Used for JumpIfTrue and JumpIfFalse
     Compare(ComparisonOp, Parameter, Parameter, usize), // Used for LessThan and Equals
+    RelativeBaseAdjust(Parameter),       // 9
     Halt,                                // 99
 }
 
@@ -77,7 +82,7 @@ impl Instruction {
         match self {
             Self::Op(_, _, _, _) | Self::Compare(_, _, _, _) => 4,
             Self::ConditionalJump(_, _, _) => 3,
-            Self::Input(_) | Self::Output(_) => 2,
+            Self::Input(_) | Self::Output(_) | Self::RelativeBaseAdjust(_) => 2,
             Self::Halt => 1,
         }
     }
@@ -91,7 +96,7 @@ impl Instruction {
             "Opcode should have at least a ones digit faile for opcode: {}",
             opcode
         ));
-        let _ = digits.next().unwrap_or(0);
+        let tens_digit = digits.next().unwrap_or(0);
         let hundreds_digit = digits.next().unwrap_or(0);
         let thousands_digit = digits.next().unwrap_or(0);
         let ten_thousands_digit = digits.next().unwrap_or(0);
@@ -102,105 +107,54 @@ impl Instruction {
             opcode
         );
 
-        match ones_digit {
-            1 => Self::Op(
+        match (tens_digit, ones_digit) {
+            (_, 1) => Self::Op(
                 Op::Add,
                 Parameter::new(hundreds_digit, input[1]),
                 Parameter::new(thousands_digit, input[2]),
                 input[3] as usize,
             ),
-            2 => Self::Op(
+            (_, 2) => Self::Op(
                 Op::Multiply,
                 Parameter::new(hundreds_digit, input[1]),
                 Parameter::new(thousands_digit, input[2]),
                 input[3] as usize,
             ),
-            3 => Self::Input(input[1] as usize),
-            4 => Self::Output(Parameter::new(hundreds_digit, input[1])),
-            5 => Self::ConditionalJump(
+            (_, 3) => Self::Input(input[1] as usize),
+            (_, 4) => Self::Output(Parameter::new(hundreds_digit, input[1])),
+            (_, 5) => Self::ConditionalJump(
                 JumpCondition::IfTrue,
                 Parameter::new(hundreds_digit, input[1]),
                 Parameter::new(thousands_digit, input[2]),
             ),
-            6 => Self::ConditionalJump(
+            (_, 6) => Self::ConditionalJump(
                 JumpCondition::IfFalse,
                 Parameter::new(hundreds_digit, input[1]),
                 Parameter::new(thousands_digit, input[2]),
             ),
-            7 => Self::Compare(
+            (_, 7) => Self::Compare(
                 ComparisonOp::LessThan,
                 Parameter::new(hundreds_digit, input[1]),
                 Parameter::new(thousands_digit, input[2]),
                 input[3] as usize,
             ),
-            8 => Self::Compare(
+            (_, 8) => Self::Compare(
                 ComparisonOp::Equal,
                 Parameter::new(hundreds_digit, input[1]),
                 Parameter::new(thousands_digit, input[2]),
                 input[3] as usize,
             ),
-            9 => Self::Halt,
+            (0, 9) => Self::RelativeBaseAdjust(Parameter::new(hundreds_digit, input[1])),
+            (9, 9) => Self::Halt,
             _ => panic!("Invalid opcode `{}`", opcode),
         }
     }
+}
 
-    fn execute(&self, memory: &mut [isize], input: isize) -> (Option<usize>, Option<isize>) {
-        match self {
-            Self::Op(op, arg1, arg2, arg3) => {
-                let a1 = arg1.value(memory);
-                let a2 = arg2.value(memory);
-
-                match op {
-                    Op::Add => memory[*arg3] = a1 + a2,
-                    Op::Multiply => memory[*arg3] = a1 * a2,
-                }
-
-                (None, None)
-            }
-            Self::ConditionalJump(condition, arg1, arg2) => {
-                let a1 = arg1.value(memory);
-                let a2 = arg2.value(memory);
-
-                match condition {
-                    JumpCondition::IfTrue => {
-                        if a1 != 0 {
-                            (Some(a2 as usize), None)
-                        } else {
-                            (None, None)
-                        }
-                    }
-                    JumpCondition::IfFalse => {
-                        if a1 == 0 {
-                            (Some(a2 as usize), None)
-                        } else {
-                            (None, None)
-                        }
-                    }
-                }
-            }
-            Self::Compare(op, arg1, arg2, arg3) => {
-                let a1 = arg1.value(memory);
-                let a2 = arg2.value(memory);
-
-                match op {
-                    ComparisonOp::LessThan => memory[*arg3] = if a1 < a2 { 1 } else { 0 },
-                    ComparisonOp::Equal => memory[*arg3] = if a1 == a2 { 1 } else { 0 },
-                }
-
-                (None, None)
-            }
-            Self::Input(arg1) => {
-                memory[*arg1] = input;
-                (None, None)
-            }
-            Self::Output(arg1) => {
-                let a1 = arg1.value(memory);
-
-                (None, Some(a1))
-            }
-            Self::Halt => (None, None),
-        }
-    }
+enum ExecutionState {
+    Halt,
+    Pause,
+    Continue,
 }
 
 pub struct Computer {
@@ -210,6 +164,7 @@ pub struct Computer {
     program: Vec<isize>,
     did_halt: bool,
     ip: usize,
+    relative_base_offset: usize,
 }
 
 impl Computer {
@@ -221,6 +176,7 @@ impl Computer {
             program,
             did_halt: false,
             ip: 0,
+            relative_base_offset: 0,
         }
     }
 
@@ -240,39 +196,15 @@ impl Computer {
                 Instruction::parse(&self.program[self.ip..])
             };
 
-            if parsed_instruction.should_halt() {
-                self.did_halt = true;
-                break;
-            }
-
-            if parsed_instruction.is_input() {
-                let next_input = self.read_input();
-
-                match next_input {
-                    None => {
-                        // We need to wait
-                        break;
-                    }
-                    Some(input) => {
-                        let (new_pc, new_last_output) =
-                            parsed_instruction.execute(&mut self.program, input);
-
-                        if new_last_output.is_some() {
-                            self.output = new_last_output;
-                        }
-                        self.ip = new_pc.unwrap_or_else(|| self.ip + parsed_instruction.length());
-                    }
-                }
-            } else {
-                //  Input value doesn't matter here since Instruction isn't input
-                let (new_pc, new_last_output) = parsed_instruction.execute(&mut self.program, 0);
-                if new_last_output.is_some() {
-                    self.output = new_last_output;
-                }
-                self.ip = new_pc.unwrap_or_else(|| self.ip + parsed_instruction.length());
-                if parsed_instruction.is_output() && stop_on_output {
+            match self.execute_instruction(&parsed_instruction, stop_on_output) {
+                ExecutionState::Halt => {
+                    self.did_halt = true;
                     break;
                 }
+                ExecutionState::Pause => {
+                    break;
+                }
+                ExecutionState::Continue => (),
             }
         }
     }
@@ -299,5 +231,96 @@ impl Computer {
         } else {
             (self.dynamic_input.as_ref().unwrap())()
         }
+    }
+
+    fn execute_instruction(
+        &mut self,
+        instruction: &Instruction,
+        stop_on_output: bool,
+    ) -> ExecutionState {
+        let relative_base_offset = self.relative_base_offset;
+
+        let (new_ip, new_state) = match instruction {
+            Instruction::Op(op, arg1, arg2, arg3) => {
+                let a1 = arg1.value(&self.program, relative_base_offset);
+                let a2 = arg2.value(&self.program, relative_base_offset);
+
+                match op {
+                    Op::Add => self.program[*arg3] = a1 + a2,
+                    Op::Multiply => self.program[*arg3] = a1 * a2,
+                }
+
+                (None, None)
+            }
+            Instruction::ConditionalJump(condition, arg1, arg2) => {
+                let a1 = arg1.value(&self.program, relative_base_offset);
+                let a2 = arg2.value(&self.program, relative_base_offset);
+
+                match condition {
+                    JumpCondition::IfTrue => {
+                        if a1 != 0 {
+                            (Some(a2 as usize), None)
+                        } else {
+                            (None, None)
+                        }
+                    }
+                    JumpCondition::IfFalse => {
+                        if a1 == 0 {
+                            (Some(a2 as usize), None)
+                        } else {
+                            (None, None)
+                        }
+                    }
+                }
+            }
+            Instruction::Compare(op, arg1, arg2, arg3) => {
+                let a1 = arg1.value(&self.program, relative_base_offset);
+                let a2 = arg2.value(&self.program, relative_base_offset);
+
+                match op {
+                    ComparisonOp::LessThan => self.program[*arg3] = if a1 < a2 { 1 } else { 0 },
+                    ComparisonOp::Equal => self.program[*arg3] = if a1 == a2 { 1 } else { 0 },
+                }
+
+                (None, None)
+            }
+            Instruction::Input(arg1) => {
+                let next_input = self.read_input();
+
+                match next_input {
+                    None => {
+                        // We need to wait
+                        (None, Some(ExecutionState::Pause))
+                    }
+                    Some(input) => {
+                        self.program[*arg1] = input;
+
+                        (None, None)
+                    }
+                }
+            }
+            Instruction::Output(arg1) => {
+                let a1 = arg1.value(&self.program, relative_base_offset);
+
+                self.output = Some(a1);
+
+                if stop_on_output {
+                    (None, Some(ExecutionState::Pause))
+                } else {
+                    (None, None)
+                }
+            }
+            Instruction::RelativeBaseAdjust(arg1) => {
+                let a1 = arg1.value(&self.program, relative_base_offset);
+                self.relative_base_offset = ((self.relative_base_offset as isize) + a1) as usize;
+
+                (None, None)
+            }
+            Instruction::Halt => (Some(self.ip), Some(ExecutionState::Halt)),
+        };
+
+        self.ip = new_ip.unwrap_or_else(|| self.ip + instruction.length());
+
+        new_state.unwrap_or(ExecutionState::Continue)
     }
 }
