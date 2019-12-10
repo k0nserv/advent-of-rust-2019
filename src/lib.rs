@@ -292,8 +292,10 @@ mod tests {
 
         let input = load_file("day09.txt");
 
-        assert_eq!(star_one(&input), 2453265701);
-        assert_eq!(star_two(&input), 80805);
+        time("Day 09, Part 1", || {
+            assert_eq!(star_one(&input), 2453265701)
+        });
+        time("Day 09, Part 2", || assert_eq!(star_two(&input), 80805));
     }
 
     #[test]
