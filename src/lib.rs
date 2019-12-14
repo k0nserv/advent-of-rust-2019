@@ -313,9 +313,11 @@ mod tests {
         use crate::day11::{star_one, star_two};
 
         let input = load_file("day11.txt");
+        let mut expected = load_file("day11_expected.txt");
+        expected = expected.trim().to_string();
 
-        assert_eq!(star_one(&input), 1);
-        assert_eq!(star_two(&input), 1);
+        assert_eq!(star_one(&input), 1709);
+        assert_eq!(star_two(&input), expected);
     }
 
     #[test]
