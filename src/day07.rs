@@ -1,4 +1,4 @@
-use crate::intcode_computer::Computer;
+use crate::intcode_computer::{input_with_initial_value, Computer};
 use crate::parse_custom_separated;
 
 use itertools::iproduct;
@@ -11,32 +11,35 @@ use std::rc::Rc;
 fn thruster_signal(program: Vec<isize>, phase_settings: &[isize], feedback: bool) -> isize {
     let mut computers: Vec<_> = phase_settings
         .iter()
-        .map(|setting| Computer::new(program.clone(), *setting))
+        .map(|setting| Computer::new(program.clone()))
         .collect();
     let last_outputs: Rc<RefCell<Vec<Option<isize>>>> =
         Rc::new(RefCell::new(phase_settings.iter().map(|_| None).collect()));
-    let has_sent_initial_signal = RefCell::new(false);
 
-    let outputs = Rc::clone(&last_outputs);
-    computers[0].set_dynamic_input(Box::new(move || {
-        let mut has_sent_initial_signal = has_sent_initial_signal.borrow_mut();
-        if feedback {
-            if *has_sent_initial_signal {
-                let borrowed_outputs = outputs.borrow();
-
-                borrowed_outputs[borrowed_outputs.len() - 1]
-            } else {
-                *has_sent_initial_signal = true;
-
-                Some(0)
-            }
-        } else {
-            Some(0)
-        }
-    }));
-    for idx in 1..phase_settings.len() {
+    for (idx, setting) in phase_settings.iter().enumerate() {
+        let mut has_sent_initial_signal = false;
         let outputs = Rc::clone(&last_outputs);
-        computers[idx].set_dynamic_input(Box::new(move || outputs.borrow()[idx - 1]));
+        let last_outputs = Rc::clone(&last_outputs);
+
+        computers[idx].set_input(input_with_initial_value(*setting, move || {
+            if idx == 0 {
+                if feedback {
+                    if has_sent_initial_signal {
+                        let borrowed_outputs = last_outputs.borrow();
+
+                        borrowed_outputs[borrowed_outputs.len() - 1]
+                    } else {
+                        has_sent_initial_signal = true;
+
+                        Some(0)
+                    }
+                } else {
+                    Some(0)
+                }
+            } else {
+                outputs.borrow()[idx - 1]
+            }
+        }));
     }
 
     let mut all_halted = false;

@@ -21,7 +21,7 @@ impl Parameter {
         match self {
             &Self::Immediate(value) => value,
             &Self::Position(position) => memory[position],
-            &Self::Relative(position) => memory[self.address(relative_base_offset)],
+            &Self::Relative(_) => memory[self.address(relative_base_offset)],
         }
     }
 
@@ -167,11 +167,36 @@ enum ExecutionState {
     Continue,
 }
 
+pub fn input_with_initial_value<F, T>(
+    intial_value: T,
+    mut dynamic_value: F,
+) -> impl FnMut() -> Option<T>
+where
+    T: Copy,
+    F: FnMut() -> Option<T>,
+{
+    let mut has_yielded_initial_value = false;
+
+    let closure = move || {
+        if has_yielded_initial_value {
+            dynamic_value()
+        } else {
+            has_yielded_initial_value = true;
+
+            Some(intial_value)
+        }
+    };
+
+    closure
+}
+
 const EXTENDED_MEMORY: [isize; 10_000] = [0; 10_000];
 
-pub struct Computer {
-    static_input: Option<isize>,
-    dynamic_input: Option<Box<dyn Fn() -> Option<isize>>>,
+pub struct Computer<F>
+where
+    F: FnMut() -> Option<isize>,
+{
+    input: Option<F>,
     outputs: Vec<isize>,
     program: Vec<isize>,
     did_halt: bool,
@@ -179,14 +204,30 @@ pub struct Computer {
     relative_base_offset: usize,
 }
 
-impl Computer {
-    pub fn new(program: Vec<isize>, initial_input: isize) -> Self {
+impl<F> Computer<F>
+where
+    F: FnMut() -> Option<isize>,
+{
+    pub fn new(program: Vec<isize>) -> Self {
         let mut program = program;
         program.extend(&EXTENDED_MEMORY[..]);
 
         Self {
-            static_input: Some(initial_input),
-            dynamic_input: None,
+            input: None,
+            outputs: vec![],
+            program,
+            did_halt: false,
+            ip: 0,
+            relative_base_offset: 0,
+        }
+    }
+
+    pub fn with_input(program: Vec<isize>, input: F) -> Self {
+        let mut program = program;
+        program.extend(&EXTENDED_MEMORY[..]);
+
+        Self {
+            input: Some(input),
             outputs: vec![],
             program,
             did_halt: false,
@@ -199,8 +240,8 @@ impl Computer {
         self.did_halt
     }
 
-    pub fn set_dynamic_input(&mut self, input: Box<dyn Fn() -> Option<isize>>) {
-        self.dynamic_input = Some(input);
+    pub fn set_input(&mut self, input: F) {
+        self.input = Some(input);
     }
 
     pub fn run_until_halt_or_paused(&mut self, stop_on_output: bool) {
@@ -241,15 +282,7 @@ impl Computer {
     }
 
     fn read_input(&mut self) -> Option<isize> {
-        if self.static_input.is_some() {
-            let i = self.static_input;
-            if self.dynamic_input.is_some() {
-                self.static_input = None;
-            }
-            i
-        } else {
-            (self.dynamic_input.as_ref().unwrap())()
-        }
+        self.input.as_mut().and_then(|input| input())
     }
 
     fn execute_instruction(

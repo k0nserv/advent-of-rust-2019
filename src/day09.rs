@@ -3,7 +3,7 @@ use crate::parse_custom_separated;
 
 pub fn star_one(input: &str) -> isize {
     let program: Vec<_> = parse_custom_separated::<isize>(input, ",").collect();
-    let mut computer = Computer::new(program, 1);
+    let mut computer = Computer::with_input(program, || Some(1));
 
     computer.run_until_halt_or_paused(false);
 
@@ -14,7 +14,7 @@ pub fn star_one(input: &str) -> isize {
 
 pub fn star_two(input: &str) -> isize {
     let program: Vec<_> = parse_custom_separated::<isize>(input, ",").collect();
-    let mut computer = Computer::new(program, 2);
+    let mut computer = Computer::with_input(program, || Some(2));
 
     computer.run_until_halt_or_paused(false);
 
@@ -37,7 +37,7 @@ mod tests {
     #[test]
     fn test_extended_intcode_program1() {
         let program = Vec::from(TEST_PROGRAM_1);
-        let mut computer = Computer::new(program, 0);
+        let mut computer = Computer::with_input(program, || Some(0));
 
         computer.run_until_halt_or_paused(false);
 
@@ -47,7 +47,7 @@ mod tests {
     #[test]
     fn test_extended_intcode_program2() {
         let program = Vec::from(TEST_PROGRAM_2);
-        let mut computer = Computer::new(program, 0);
+        let mut computer = Computer::with_input(program, || Some(0));
 
         computer.run_until_halt_or_paused(false);
 
@@ -57,7 +57,7 @@ mod tests {
     #[test]
     fn test_extended_intcode_program3() {
         let program = Vec::from(TEST_PROGRAM_3);
-        let mut computer = Computer::new(program, 0);
+        let mut computer = Computer::with_input(program, || Some(0));
 
         computer.run_until_halt_or_paused(false);
 

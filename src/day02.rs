@@ -29,7 +29,7 @@ fn run_until_halt(memory: Vec<i64>) -> i64 {
 
 pub fn star_one(input: &str) -> isize {
     let program = parse_custom_separated::<isize>(input, ",").collect();
-    let mut computer = Computer::new(program, 1);
+    let mut computer = Computer::with_input(program, || Some(1));
     computer.run_until_halt_or_paused(false);
 
     computer.memory()[0]
@@ -40,7 +40,7 @@ pub fn star_two(input: &str) -> isize {
 
     let (noun, verb) = iproduct!((0..=99), (0..=99))
         .find(|&(noun, verb)| {
-            let mut modified_computer = Computer::new(program.clone(), 1);
+            let mut modified_computer = Computer::with_input(program.clone(), || Some(1));
             modified_computer.memory_mut()[1] = noun;
             modified_computer.memory_mut()[2] = verb;
 
