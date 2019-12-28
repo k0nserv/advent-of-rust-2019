@@ -27,6 +27,7 @@ mod day22;
 mod day23;
 mod day24;
 mod intcode_computer;
+mod math;
 
 #[derive(Debug, Copy, Clone)]
 pub struct DigitIterator {
@@ -356,8 +357,8 @@ mod tests {
 
         let input = load_file("day15.txt");
 
-        assert_eq!(star_one(&input), 1);
-        assert_eq!(star_two(&input), 1);
+        assert_eq!(star_one(&input), 300);
+        assert_eq!(star_two(&input), 312);
     }
 
     #[test]
