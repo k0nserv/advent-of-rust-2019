@@ -7,10 +7,10 @@ use crate::intcode_computer::Computer;
 use crate::math::Vector2;
 use crate::parse_custom_separated;
 
-type Location = Vector2<isize>;
+pub type Location = Vector2<isize>;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-enum Direction {
+pub enum Direction {
     North = 1,
     South,
     West,
@@ -48,7 +48,7 @@ impl Direction {
 }
 
 #[derive(Eq, PartialEq)]
-enum Status {
+pub enum Status {
     BlockedByWall = 0,
     Moved,
     FoundOxygenSystem,
@@ -68,35 +68,10 @@ impl TryFrom<isize> for Status {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-enum Tile {
+pub enum Tile {
     Empty,
     Wall,
     OxygenSystem,
-}
-
-#[derive(Copy, Clone, Debug)]
-struct VisitedTile {
-    tile: Tile,
-    is_dead_end: bool,
-    neighbours_explored: bool,
-}
-
-impl VisitedTile {
-    fn new(tile: Tile) -> Self {
-        Self {
-            tile,
-            is_dead_end: false,
-            neighbours_explored: false,
-        }
-    }
-
-    fn dead_end(tile: Tile) -> Self {
-        Self {
-            tile,
-            is_dead_end: true,
-            neighbours_explored: false,
-        }
-    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -106,20 +81,19 @@ enum Behavior {
     OxygenSystemFound,
 }
 
-struct World {
-    visited_locations: HashMap<Location, VisitedTile>,
-    oxygen_location: Option<Location>,
-    droid_location: Location,
+pub struct World {
+    pub visited_locations: HashMap<Location, Tile>,
+    pub oxygen_location: Option<Location>,
+    pub droid_location: Location,
     path: VecDeque<Direction>,
     behavior: Behavior,
     explored_everything: bool,
 }
 
 impl World {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
-            visited_locations: std::iter::once((Vector2::default(), VisitedTile::new(Tile::Empty)))
-                .collect(),
+            visited_locations: std::iter::once((Vector2::default(), Tile::Empty)).collect(),
             oxygen_location: None,
             droid_location: Location::default(),
             path: VecDeque::new(),
@@ -128,7 +102,11 @@ impl World {
         }
     }
 
-    fn adjacent_open_locations(&self, to: Location) -> HashSet<Location> {
+    pub fn done_exploring(&self) -> bool {
+        self.explored_everything
+    }
+
+    pub fn adjacent_open_locations(&self, to: Location) -> HashSet<Location> {
         Direction::all()
             .iter()
             .filter_map(|dir| {
@@ -136,7 +114,7 @@ impl World {
 
                 match self.visited_locations.get(&new_location) {
                     None => None,
-                    Some(tile) => match tile.tile {
+                    Some(tile) => match tile {
                         Tile::Wall => None,
                         _ => Some(new_location),
                     },
@@ -145,7 +123,7 @@ impl World {
             .collect()
     }
 
-    fn next_direction(&mut self) -> Direction {
+    pub fn next_direction(&mut self) -> Direction {
         let explore_direction = Direction::all()
             .iter()
             .find(|&dir| {
@@ -174,7 +152,7 @@ impl World {
         }
     }
 
-    fn update(&mut self, direction: Direction, status: Status) {
+    pub fn update(&mut self, direction: Direction, status: Status) {
         let new_tile = match status {
             Status::BlockedByWall => Tile::Wall,
             Status::Moved => Tile::Empty,
@@ -190,7 +168,7 @@ impl World {
                 let location = self.droid_location + dir.dir();
                 match self.visited_locations.get(&location) {
                     None => false, // Unknown location
-                    Some(tile) => tile.tile == Tile::Wall,
+                    Some(&tile) => tile == Tile::Wall,
                 }
             });
 
@@ -198,21 +176,21 @@ impl World {
             let location = self.droid_location + dir.dir();
             match self.visited_locations.get(&location) {
                 None => false, // Unknown location
-                Some(tile) => tile.tile != Tile::Wall,
+                Some(&tile) => tile != Tile::Wall,
             }
         });
 
         self.visited_locations
             .entry(location)
             .and_modify(|e| {
-                e.tile = new_tile;
-                e.is_dead_end = is_dead_end;
-                e.neighbours_explored = neighbours_explored;
+                *e = new_tile;
+                // e.is_dead_end = is_dead_end;
+                // e.neighbours_explored = neighbours_explored;
             })
             .or_insert_with(|| {
-                let mut tile = VisitedTile::new(new_tile);
-                tile.is_dead_end = is_dead_end;
-                tile.neighbours_explored = neighbours_explored;
+                let mut tile = new_tile;
+                // tile.is_dead_end = is_dead_end;
+                // tile.neighbours_explored = neighbours_explored;
 
                 tile
             });
@@ -235,7 +213,45 @@ impl World {
         self.explored_everything = self.oxygen_location.is_some() && self.path.is_empty();
     }
 
-    fn shortest_path(&self, from: Location, to: Location) -> Option<Vec<Location>> {
+    pub fn known_bounds(&self) -> (Location, Location) {
+        let max = Location::new(
+            self.visited_locations
+                .keys()
+                .max_by_key(|l| l.x)
+                .unwrap()
+                .x
+                .max(self.droid_location.x)
+                .max(5),
+            self.visited_locations
+                .keys()
+                .max_by_key(|l| l.y)
+                .unwrap()
+                .y
+                .max(self.droid_location.y)
+                .max(5),
+        );
+
+        let min = Location::new(
+            self.visited_locations
+                .keys()
+                .min_by_key(|l| l.x)
+                .unwrap()
+                .x
+                .min(self.droid_location.x)
+                .min(-5),
+            self.visited_locations
+                .keys()
+                .min_by_key(|l| l.y)
+                .unwrap()
+                .y
+                .min(self.droid_location.y)
+                .min(-5),
+        );
+
+        (max, min)
+    }
+
+    pub fn shortest_path(&self, from: Location, to: Location) -> Option<Vec<Location>> {
         // A Star
 
         let mut open: HashSet<Location> = std::iter::once(from).collect();
@@ -273,8 +289,8 @@ impl World {
                 let location = current + dir.dir();
 
                 match self.visited_locations.get(&location) {
-                    Some(tile) => {
-                        if tile.tile != Tile::Wall {
+                    Some(&tile) => {
+                        if tile != Tile::Wall {
                             Some(location)
                         } else {
                             None
@@ -308,44 +324,12 @@ impl World {
 
 impl fmt::Debug for World {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let max = Location::new(
-            self.visited_locations
-                .keys()
-                .max_by_key(|l| l.x)
-                .unwrap()
-                .x
-                .max(self.droid_location.x)
-                .max(5),
-            self.visited_locations
-                .keys()
-                .max_by_key(|l| l.y)
-                .unwrap()
-                .y
-                .max(self.droid_location.y)
-                .max(5),
-        );
+        let (max, min) = self.known_bounds();
 
-        let min = Location::new(
-            self.visited_locations
-                .keys()
-                .min_by_key(|l| l.x)
-                .unwrap()
-                .x
-                .min(self.droid_location.x)
-                .min(-5),
-            self.visited_locations
-                .keys()
-                .min_by_key(|l| l.y)
-                .unwrap()
-                .y
-                .min(self.droid_location.y)
-                .min(-5),
-        );
-
-        let lines: Vec<_> = (min.y..max.y)
+        let lines: Vec<_> = (min.y..=max.y)
             .rev()
             .map(|y| {
-                (min.x..max.x)
+                (min.x..=max.x)
                     .map(move |x| {
                         let location = Location::new(x, y);
 
@@ -355,8 +339,8 @@ impl fmt::Debug for World {
                             "X"
                         } else {
                             match self.visited_locations.get(&location) {
-                                None => " ",
-                                Some(tile) => match tile.tile {
+                                None => "?",
+                                Some(tile) => match tile {
                                     Tile::Empty => ".",
                                     Tile::Wall => "#",
                                     Tile::OxygenSystem => "O",

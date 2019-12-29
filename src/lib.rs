@@ -1,3 +1,5 @@
+use std::fs::File;
+use std::io::Read;
 use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -16,7 +18,7 @@ mod day11;
 mod day12;
 mod day13;
 mod day14;
-mod day15;
+pub mod day15;
 mod day16;
 mod day17;
 mod day18;
@@ -26,7 +28,7 @@ mod day21;
 mod day22;
 mod day23;
 mod day24;
-mod intcode_computer;
+pub mod intcode_computer;
 mod math;
 
 #[derive(Debug, Copy, Clone)]
@@ -86,7 +88,7 @@ where
 /// Each line is treated as parsable after trimming.
 ///
 /// **Note:** Panics if any parsing fails
-fn parse_lines<T>(input: &str) -> impl Iterator<Item = T> + '_
+pub fn parse_lines<T>(input: &str) -> impl Iterator<Item = T> + '_
 where
     T: FromStr + std::fmt::Debug,
     <T as FromStr>::Err: std::fmt::Debug,
@@ -109,7 +111,7 @@ where
 /// Each unit separated by whitespace is treated as parsable after trimming.
 ///
 /// **Note:** Panics if any parsing fails
-fn parse_whitespace_separated<T>(input: &str) -> impl Iterator<Item = T> + '_
+pub fn parse_whitespace_separated<T>(input: &str) -> impl Iterator<Item = T> + '_
 where
     T: FromStr + std::fmt::Debug,
     <T as FromStr>::Err: std::fmt::Debug,
@@ -132,7 +134,10 @@ where
 /// Each unit separated by a specific separator is treated as parsable after trimming.
 ///
 /// **Note:** Panics if any parsing fails
-fn parse_custom_separated<'a, T>(input: &'a str, separator: &'a str) -> impl Iterator<Item = T> + 'a
+pub fn parse_custom_separated<'a, T>(
+    input: &'a str,
+    separator: &'a str,
+) -> impl Iterator<Item = T> + 'a
 where
     T: FromStr + std::fmt::Debug,
     <T as FromStr>::Err: std::fmt::Debug,
@@ -150,19 +155,17 @@ where
         })
 }
 
+pub fn load_file(path: &str) -> String {
+    let mut input = String::new();
+    let mut f = File::open(path).expect("Unable to open file");
+    f.read_to_string(&mut input).expect("Unable to read string");
+
+    input
+}
+
 #[cfg(test)]
 mod tests {
-    use super::time;
-    use std::fs::File;
-    use std::io::Read;
-
-    fn load_file(path: &str) -> String {
-        let mut input = String::new();
-        let mut f = File::open(path).expect("Unable to open file");
-        f.read_to_string(&mut input).expect("Unable to read string");
-
-        input
-    }
+    use super::{load_file, time};
 
     #[test]
     fn test_parse_lines() {
