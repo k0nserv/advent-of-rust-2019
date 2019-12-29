@@ -213,7 +213,7 @@ impl World {
         self.explored_everything = self.oxygen_location.is_some() && self.path.is_empty();
     }
 
-    pub fn known_bounds(&self) -> (Location, Location) {
+    pub fn known_bounds(&self, min_size: (isize, isize)) -> (Location, Location) {
         let max = Location::new(
             self.visited_locations
                 .keys()
@@ -221,14 +221,14 @@ impl World {
                 .unwrap()
                 .x
                 .max(self.droid_location.x)
-                .max(5),
+                .max(min_size.0 / 2),
             self.visited_locations
                 .keys()
                 .max_by_key(|l| l.y)
                 .unwrap()
                 .y
                 .max(self.droid_location.y)
-                .max(5),
+                .max(min_size.1 / 2),
         );
 
         let min = Location::new(
@@ -238,14 +238,14 @@ impl World {
                 .unwrap()
                 .x
                 .min(self.droid_location.x)
-                .min(-5),
+                .min(0 - min_size.0 / 2),
             self.visited_locations
                 .keys()
                 .min_by_key(|l| l.y)
                 .unwrap()
                 .y
                 .min(self.droid_location.y)
-                .min(-5),
+                .min(0 - min_size.1 / 2),
         );
 
         (max, min)
@@ -324,7 +324,7 @@ impl World {
 
 impl fmt::Debug for World {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let (max, min) = self.known_bounds();
+        let (max, min) = self.known_bounds((10, 10));
 
         let lines: Vec<_> = (min.y..=max.y)
             .rev()
