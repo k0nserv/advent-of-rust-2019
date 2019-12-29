@@ -1,5 +1,3 @@
-use crate::DigitIterator;
-
 #[derive(Debug)]
 enum Parameter {
     Immediate(isize),
@@ -14,14 +12,6 @@ impl Parameter {
             1 => Self::Immediate(value),
             2 => Self::Relative(value),
             _ => panic!("Unsupported paramter mode: `{}`", mode),
-        }
-    }
-
-    fn value(&self, memory: &[isize], relative_base_offset: usize) -> isize {
-        match self {
-            &Self::Immediate(value) => value,
-            &Self::Position(position) => memory[position],
-            &Self::Relative(_) => memory[self.address(relative_base_offset)],
         }
     }
 
@@ -66,27 +56,7 @@ enum Instruction {
 }
 
 impl Instruction {
-    fn should_halt(&self) -> bool {
-        match self {
-            Self::Halt => true,
-            _ => false,
-        }
-    }
-
-    fn is_input(&self) -> bool {
-        match self {
-            Self::Input(_) => true,
-            _ => false,
-        }
-    }
-
-    fn is_output(&self) -> bool {
-        match self {
-            Self::Output(_) => true,
-            _ => false,
-        }
-    }
-
+    #[inline(always)]
     fn length(&self) -> usize {
         match self {
             Self::Op(_, _, _, _) | Self::Compare(_, _, _, _) => 4,
@@ -98,32 +68,26 @@ impl Instruction {
 
     fn parse(input: &[isize]) -> Self {
         let opcode = input[0];
-        assert!(opcode >= 0);
 
-        let mut digits = DigitIterator::new(opcode as usize);
-        let ones_digit = digits.next().expect(&format!(
-            "Opcode should have at least a ones digit faile for opcode: {}",
-            opcode
-        ));
-        let tens_digit = digits.next().unwrap_or(0);
-        let hundreds_digit = digits.next().unwrap_or(0);
-        let thousands_digit = digits.next().unwrap_or(0);
-        let ten_thousands_digit = digits.next().unwrap_or(0);
+        let code = opcode % 100;
+        let hundreds_digit = ((opcode / 100) % 10) as usize;
+        let thousands_digit = ((opcode / 1000) % 10) as usize;
+        let ten_thousands_digit = ((opcode / 10000) % 10) as usize;
 
-        match (tens_digit, ones_digit) {
-            (_, 1) => Self::Op(
+        match code {
+            1 => Self::Op(
                 Op::Add,
                 Parameter::new(hundreds_digit, input[1]),
                 Parameter::new(thousands_digit, input[2]),
                 Parameter::new(ten_thousands_digit, input[3]),
             ),
-            (_, 2) => Self::Op(
+            2 => Self::Op(
                 Op::Multiply,
                 Parameter::new(hundreds_digit, input[1]),
                 Parameter::new(thousands_digit, input[2]),
                 Parameter::new(ten_thousands_digit, input[3]),
             ),
-            (_, 3) => {
+            3 => {
                 assert!(
                     hundreds_digit != 1,
                     "Immediate mode is not compatible with the Input opcode"
@@ -131,31 +95,31 @@ impl Instruction {
 
                 Self::Input(Parameter::new(hundreds_digit, input[1]))
             }
-            (_, 4) => Self::Output(Parameter::new(hundreds_digit, input[1])),
-            (_, 5) => Self::ConditionalJump(
+            4 => Self::Output(Parameter::new(hundreds_digit, input[1])),
+            5 => Self::ConditionalJump(
                 JumpCondition::IfTrue,
                 Parameter::new(hundreds_digit, input[1]),
                 Parameter::new(thousands_digit, input[2]),
             ),
-            (_, 6) => Self::ConditionalJump(
+            6 => Self::ConditionalJump(
                 JumpCondition::IfFalse,
                 Parameter::new(hundreds_digit, input[1]),
                 Parameter::new(thousands_digit, input[2]),
             ),
-            (_, 7) => Self::Compare(
+            7 => Self::Compare(
                 ComparisonOp::LessThan,
                 Parameter::new(hundreds_digit, input[1]),
                 Parameter::new(thousands_digit, input[2]),
                 Parameter::new(ten_thousands_digit, input[3]),
             ),
-            (_, 8) => Self::Compare(
+            8 => Self::Compare(
                 ComparisonOp::Equal,
                 Parameter::new(hundreds_digit, input[1]),
                 Parameter::new(thousands_digit, input[2]),
                 Parameter::new(ten_thousands_digit, input[3]),
             ),
-            (0, 9) => Self::RelativeBaseAdjust(Parameter::new(hundreds_digit, input[1])),
-            (9, 9) => Self::Halt,
+            9 => Self::RelativeBaseAdjust(Parameter::new(hundreds_digit, input[1])),
+            99 => Self::Halt,
             _ => panic!("Invalid opcode `{}`", opcode),
         }
     }
@@ -190,7 +154,66 @@ where
     closure
 }
 
-const EXTENDED_MEMORY: [isize; 10_000] = [0; 10_000];
+pub struct GrowableMemory {
+    storage: Vec<isize>,
+}
+
+impl GrowableMemory {
+    fn new(program: Vec<isize>, initial_size: usize) -> Self {
+        let mut storage: Vec<isize> = program.clone();
+        storage.resize_with(initial_size, Default::default);
+
+        Self { storage }
+    }
+
+    fn len(&self) -> usize {
+        self.storage.len()
+    }
+
+    #[inline(always)]
+    pub fn read(&mut self, address: usize) -> isize {
+        if address < self.storage.len() {
+            self.storage[address]
+        } else {
+            self.storage
+                .resize_with(self.storage.len() * 10, Default::default);
+
+            self.storage[address]
+        }
+    }
+
+    fn read_instruction(&mut self, address: usize) -> &[isize] {
+        if address < self.storage.len() {
+            &self.storage[address..address + 4]
+        } else {
+            self.storage
+                .resize_with(self.storage.len() * 2, Default::default);
+
+            &self.storage[address..address + 4]
+        }
+    }
+
+    #[inline(always)]
+    pub fn write(&mut self, address: usize, value: isize) {
+        if address < self.storage.len() {
+            self.storage[address] = value;
+        } else {
+            self.storage
+                .resize_with(self.storage.len() * 10, Default::default);
+            self.storage[address] = value;
+        }
+    }
+
+    fn value(&mut self, parameter: &Parameter, relative_base_offset: usize) -> isize {
+        match parameter {
+            &Parameter::Immediate(value) => value,
+            &Parameter::Position(position) => self.read(position),
+            &Parameter::Relative(_) => self.read(parameter.address(relative_base_offset)),
+        }
+    }
+}
+
+const INITIAL_MEMORY_SIZE: usize = 10_000;
 
 pub struct Computer<F>
 where
@@ -198,7 +221,7 @@ where
 {
     input: Option<F>,
     outputs: Vec<isize>,
-    program: Vec<isize>,
+    program: GrowableMemory,
     did_halt: bool,
     ip: usize,
     relative_base_offset: usize,
@@ -209,13 +232,10 @@ where
     F: FnMut() -> Option<isize>,
 {
     pub fn new(program: Vec<isize>) -> Self {
-        let mut program = program;
-        program.extend(&EXTENDED_MEMORY[..]);
-
         Self {
             input: None,
             outputs: vec![],
-            program,
+            program: GrowableMemory::new(program, INITIAL_MEMORY_SIZE),
             did_halt: false,
             ip: 0,
             relative_base_offset: 0,
@@ -223,13 +243,10 @@ where
     }
 
     pub fn with_input(program: Vec<isize>, input: F) -> Self {
-        let mut program = program;
-        program.extend(&EXTENDED_MEMORY[..]);
-
         Self {
             input: Some(input),
             outputs: vec![],
-            program,
+            program: GrowableMemory::new(program, INITIAL_MEMORY_SIZE),
             did_halt: false,
             ip: 0,
             relative_base_offset: 0,
@@ -246,11 +263,7 @@ where
 
     pub fn run_until_halt_or_paused(&mut self, stop_on_output: bool) {
         while self.ip < self.program.len() {
-            let parsed_instruction = if self.ip < self.program.len() - 4 {
-                Instruction::parse(&self.program[self.ip..self.ip + 4])
-            } else {
-                Instruction::parse(&self.program[self.ip..])
-            };
+            let parsed_instruction = Instruction::parse(&self.program.read_instruction(self.ip));
 
             match self.execute_instruction(&parsed_instruction, stop_on_output) {
                 ExecutionState::Halt => {
@@ -273,11 +286,7 @@ where
         &self.outputs
     }
 
-    pub fn memory(&self) -> &[isize] {
-        &self.program
-    }
-
-    pub fn memory_mut(&mut self) -> &mut [isize] {
+    pub fn memory(&mut self) -> &mut GrowableMemory {
         &mut self.program
     }
 
@@ -294,20 +303,20 @@ where
 
         let (new_ip, new_state) = match instruction {
             Instruction::Op(op, arg1, arg2, arg3) => {
-                let a1 = arg1.value(&self.program, relative_base_offset);
-                let a2 = arg2.value(&self.program, relative_base_offset);
+                let a1 = self.program.value(arg1, relative_base_offset);
+                let a2 = self.program.value(arg2, relative_base_offset);
                 let a3 = arg3.address(relative_base_offset);
 
                 match op {
-                    Op::Add => self.program[a3] = a1 + a2,
-                    Op::Multiply => self.program[a3] = a1 * a2,
+                    Op::Add => self.program.write(a3, a1 + a2),
+                    Op::Multiply => self.program.write(a3, a1 * a2),
                 }
 
                 (None, None)
             }
             Instruction::ConditionalJump(condition, arg1, arg2) => {
-                let a1 = arg1.value(&self.program, relative_base_offset);
-                let a2 = arg2.value(&self.program, relative_base_offset);
+                let a1 = self.program.value(arg1, relative_base_offset);
+                let a2 = self.program.value(arg2, relative_base_offset);
 
                 match condition {
                     JumpCondition::IfTrue => {
@@ -327,13 +336,25 @@ where
                 }
             }
             Instruction::Compare(op, arg1, arg2, arg3) => {
-                let a1 = arg1.value(&self.program, relative_base_offset);
-                let a2 = arg2.value(&self.program, relative_base_offset);
+                let a1 = self.program.value(arg1, relative_base_offset);
+                let a2 = self.program.value(arg2, relative_base_offset);
                 let a3 = arg3.address(relative_base_offset);
 
                 match op {
-                    ComparisonOp::LessThan => self.program[a3] = if a1 < a2 { 1 } else { 0 },
-                    ComparisonOp::Equal => self.program[a3] = if a1 == a2 { 1 } else { 0 },
+                    ComparisonOp::LessThan => {
+                        if a1 < a2 {
+                            self.program.write(a3, 1);
+                        } else {
+                            self.program.write(a3, 0);
+                        }
+                    }
+                    ComparisonOp::Equal => {
+                        if a1 == a2 {
+                            self.program.write(a3, 1);
+                        } else {
+                            self.program.write(a3, 0);
+                        }
+                    }
                 }
 
                 (None, None)
@@ -348,14 +369,14 @@ where
                     }
                     Some(input) => {
                         let a1 = arg1.address(relative_base_offset);
-                        self.program[a1 as usize] = input;
+                        self.program.write(a1 as usize, input);
 
                         (None, None)
                     }
                 }
             }
             Instruction::Output(arg1) => {
-                let a1 = arg1.value(&self.program, relative_base_offset);
+                let a1 = self.program.value(arg1, relative_base_offset);
 
                 self.outputs.push(a1);
 
@@ -366,7 +387,7 @@ where
                 }
             }
             Instruction::RelativeBaseAdjust(arg1) => {
-                let a1 = arg1.value(&self.program, relative_base_offset);
+                let a1 = self.program.value(arg1, relative_base_offset);
                 self.relative_base_offset = ((self.relative_base_offset as isize) + a1) as usize;
 
                 (None, None)

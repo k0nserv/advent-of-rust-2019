@@ -32,7 +32,7 @@ pub fn star_one(input: &str) -> isize {
     let mut computer = Computer::with_input(program, || Some(1));
     computer.run_until_halt_or_paused(false);
 
-    computer.memory()[0]
+    computer.memory().read(0)
 }
 
 pub fn star_two(input: &str) -> isize {
@@ -41,12 +41,12 @@ pub fn star_two(input: &str) -> isize {
     let (noun, verb) = iproduct!((0..=99), (0..=99))
         .find(|&(noun, verb)| {
             let mut modified_computer = Computer::with_input(program.clone(), || Some(1));
-            modified_computer.memory_mut()[1] = noun;
-            modified_computer.memory_mut()[2] = verb;
+            modified_computer.memory().write(1, noun);
+            modified_computer.memory().write(2, verb);
 
             modified_computer.run_until_halt_or_paused(false);
 
-            modified_computer.memory()[0] == 19690720
+            modified_computer.memory().read(0) == 19690720
         })
         .expect("There should be a noun and verb that results in the output `19690720`");
 

@@ -10,3 +10,9 @@ edition = "2018"
 itertools = "0.8.2"
 ansi_term = "0.12"
 
+[dev-dependencies]
+criterion = "0.3"
+
+[[bench]]
+name = "intcode"
+harness = false
