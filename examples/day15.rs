@@ -101,8 +101,12 @@ fn diff_sprites(current: &[Vec<Sprite>], new: &[Vec<Sprite>]) -> Vec<((usize, us
             (0..new[y].len()).filter_map(move |x| {
                 let old = current.get(y).and_then(|inner| inner.get(x));
 
+                if x < 5 && y < 2 {
+                    return Some(((x, y), new[y][x]));
+                }
+
                 if old
-                    .map(|&old_sprite| old_sprite == new[y][x])
+                    .map(|&old_sprite| old_sprite != new[y][x])
                     .unwrap_or(true)
                 {
                     Some(((x, y), new[y][x]))
