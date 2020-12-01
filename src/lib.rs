@@ -370,8 +370,8 @@ mod tests {
 
         let input = load_file("day16.txt");
 
-        assert_eq!(star_one(&input), 1);
-        assert_eq!(star_two(&input), 1);
+        assert_eq!(star_one(&input), vec![2, 9, 7, 9, 5, 5, 0, 7]);
+        assert_eq!(star_two(&input), vec![8, 9, 5, 6, 8, 5, 2, 9]);
     }
 
     #[test]
