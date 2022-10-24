@@ -2,14 +2,28 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 use std::convert::TryFrom;
 use std::io::Write;
+use std::sync::mpsc;
+use std::thread;
 use std::time::Duration;
 
 use ansi_term::Color::{Black, Blue, Green, Red, White, Yellow};
 use ansi_term::{ANSIByteString, ANSIByteStrings, Style};
+use thread_priority::*;
 
 use advent_of_rust_2019::day15::{Direction, Location, Status, Tile, World};
 use advent_of_rust_2019::intcode_computer::Computer;
 use advent_of_rust_2019::{load_file, parse_custom_separated};
+
+const RENDER_TICK_RATE: Duration = Duration::from_millis(16);
+const SIMULATION_TICK_RATE: Duration = Duration::from_millis(4);
+
+const CLS: &[u8] = "\x1B[2J".as_bytes();
+const SCS: &[u8] = "\x1B[?25h".as_bytes();
+const HCS: &[u8] = "\x1B[?25l".as_bytes();
+const BSU: &[u8] = "\x1B[?2026h".as_bytes();
+const ESU: &[u8] = "\x1B[?2026l".as_bytes();
+
+type Diff = Vec<((usize, usize), Sprite)>;
 
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
 enum Sprite {
@@ -95,15 +109,11 @@ fn world_to_sprite_map(
         .collect()
 }
 
-fn diff_sprites(current: &[Vec<Sprite>], new: &[Vec<Sprite>]) -> Vec<((usize, usize), Sprite)> {
+fn diff_sprites(current: &[Vec<Sprite>], new: &[Vec<Sprite>]) -> Diff {
     (0..new.len())
         .flat_map(|y| {
             (0..new[y].len()).filter_map(move |x| {
                 let old = current.get(y).and_then(|inner| inner.get(x));
-
-                if x < 5 && y < 2 {
-                    return Some(((x, y), new[y][x]));
-                }
 
                 if old
                     .map(|&old_sprite| old_sprite != new[y][x])
@@ -118,44 +128,48 @@ fn diff_sprites(current: &[Vec<Sprite>], new: &[Vec<Sprite>]) -> Vec<((usize, us
         .collect()
 }
 
-fn print_diffs(diffs: &[((usize, usize), Sprite)]) {
+fn print_diffs<IO: Write>(
+    diffs: &[((usize, usize), Sprite)],
+    io: &mut IO,
+    supports_synchronized_output: bool,
+) {
     let tmp_style = Style::new();
 
-    let draw: Vec<_> = diffs
-        .iter()
-        .flat_map(|((x, y), sprite)| {
-            std::iter::once(
-                tmp_style.paint(format!("\x1B[{};{}H", y + 1, x + 1).as_bytes().to_owned()),
-            )
+    let draw_commands = diffs.iter().flat_map(|((x, y), sprite)| {
+        std::iter::once(tmp_style.paint(format!("\x1B[{};{}H", y + 1, x + 1).as_bytes().to_owned()))
             .chain(std::iter::once(sprite.as_ansi()))
-        })
-        .collect();
+    });
 
-    ANSIByteStrings(&draw)
-        .write_to(&mut std::io::stdout())
-        .unwrap();
+    let draw: Vec<_> = if supports_synchronized_output {
+        std::iter::once(tmp_style.paint(BSU))
+            .chain(draw_commands)
+            .chain(std::iter::once(tmp_style.paint(ESU)))
+            .collect()
+    } else {
+        draw_commands.collect()
+    };
+
+    ANSIByteStrings(&draw).write_to(io).unwrap();
+    io.flush().unwrap();
 }
 
-fn clear_screen() {
-    print!("\x1B[2J");
+fn clear_screen<IO: Write>(io: &mut IO) {
+    io.write(CLS).expect("Failed to clear screen");
 }
 
-fn print_world(sprites: &[Vec<Sprite>]) {
-    let lines: Vec<_> = std::iter::once(Style::new().paint("\x1B[2J\x1B[1;1H".as_bytes()))
-        .chain(sprites.iter().flat_map(|row| {
-            row.iter()
-                .map(|sprite| sprite.as_ansi())
-                .chain(std::iter::once(Style::new().paint("\n".as_bytes())))
-        }))
-        .collect();
-
-    std::io::stdout().flush().unwrap();
-    let string = ANSIByteStrings(&lines)
-        .write_to(&mut std::io::stdout())
-        .unwrap();
+fn set_cursor_visiblity<IO: Write>(visible: bool, io: &mut IO) {
+    if visible {
+        io.write(SCS).expect("Failed to set cursor visibility");
+    } else {
+        io.write(HCS).expect("Failed to set cursor visibility");
+    }
 }
 
-fn explore_world(input: &str, sleep_duration: Duration) -> (World, Vec<Vec<Sprite>>) {
+fn explore_world(
+    input: &str,
+    sleep_duration: Duration,
+    tx: mpsc::Sender<Diff>,
+) -> (World, Vec<Vec<Sprite>>, mpsc::Sender<Diff>) {
     let program: Vec<isize> = parse_custom_separated(input, ",").collect();
     let next_input: RefCell<Direction> = RefCell::new(Direction::North);
     let mut world = World::new();
@@ -173,7 +187,7 @@ fn explore_world(input: &str, sleep_duration: Duration) -> (World, Vec<Vec<Sprit
 
         let sprites = world_to_sprite_map(&world, world.done_exploring(), None, None);
         let diff = diff_sprites(&last_sprite_map, &sprites);
-        print_diffs(&diff);
+        tx.send(diff).expect("Render thread unexpectedly gone");
         last_sprite_map = sprites;
         std::thread::sleep(sleep_duration);
 
@@ -184,15 +198,44 @@ fn explore_world(input: &str, sleep_duration: Duration) -> (World, Vec<Vec<Sprit
         *next_input.borrow_mut() = world.next_direction();
     }
 
-    (world, last_sprite_map)
+    (world, last_sprite_map, tx)
+}
+
+fn run_render_thread(rx: mpsc::Receiver<Diff>) {
+    set_thread_priority_and_policy(
+        thread_native_id(),
+        ThreadPriority::Crossplatform(ThreadPriorityValue::try_from(40).unwrap()),
+        ThreadSchedulePolicy::Realtime(RealtimeThreadSchedulePolicy::Fifo),
+    )
+    .expect("Failed to set thread priority");
+
+    let stdout = std::io::stdout();
+    let mut handle = stdout.lock();
+    clear_screen(&mut handle);
+    set_cursor_visiblity(false, &mut handle);
+
+    loop {
+        match rx.try_recv() {
+            Ok(commands) => print_diffs(&commands, &mut handle, true),
+            Err(mpsc::TryRecvError::Empty) => {
+                /* No action needed, currently rendered view is up to date */
+            }
+            Err(mpsc::TryRecvError::Disconnected) => break,
+        }
+
+        thread::sleep(RENDER_TICK_RATE);
+    }
+
+    set_cursor_visiblity(true, &mut handle);
 }
 
 fn main() {
-    clear_screen();
     let file = load_file("day15.txt");
-    let speed = Duration::from_millis(16);
 
-    let (world, mut last_sprite_map) = explore_world(&file, speed);
+    let (tx, rx) = mpsc::channel::<Diff>();
+    let render_thread = thread::spawn(move || run_render_thread(rx));
+
+    let (world, mut last_sprite_map, tx) = explore_world(&file, SIMULATION_TICK_RATE, tx);
     let mut path = world
         .shortest_path(Default::default(), world.oxygen_location.unwrap())
         .unwrap();
@@ -204,9 +247,9 @@ fn main() {
         let sprites =
             world_to_sprite_map(&world, world.done_exploring(), Some(&partial_path), None);
         let diff = diff_sprites(&last_sprite_map, &sprites);
-        print_diffs(&diff);
+        tx.send(diff).expect("Render thread unexpectedly gone");
         last_sprite_map = sprites;
-        std::thread::sleep(speed);
+        std::thread::sleep(SIMULATION_TICK_RATE);
     }
 
     // Prevent off by one
@@ -217,7 +260,7 @@ fn main() {
         None,
     );
     let diff = diff_sprites(&last_sprite_map, &sprites);
-    print_diffs(&diff);
+    tx.send(diff).expect("Render thread unexpectedly gone");
     last_sprite_map = sprites;
 
     std::thread::sleep(Duration::from_millis(500));
@@ -229,14 +272,13 @@ fn main() {
     )
     .collect();
     let mut oxygen_edge = oxidized.clone();
-    let mut minutes = 0;
 
     loop {
         let sprites = world_to_sprite_map(&world, world.done_exploring(), None, Some(&oxidized));
         let diff = diff_sprites(&last_sprite_map, &sprites);
-        print_diffs(&diff);
+        tx.send(diff).expect("Render thread unexpectedly gone");
         last_sprite_map = sprites;
-        std::thread::sleep(speed);
+        std::thread::sleep(SIMULATION_TICK_RATE);
         let adjacent: HashSet<Location> = oxygen_edge
             .iter()
             .flat_map(|&location| world.adjacent_open_locations(location).into_iter())
@@ -254,6 +296,12 @@ fn main() {
     // Prevent off by one
     let sprites = world_to_sprite_map(&world, world.done_exploring(), None, Some(&oxidized));
     let diff = diff_sprites(&last_sprite_map, &sprites);
-    print_diffs(&diff);
-    last_sprite_map = sprites;
+    tx.send(diff).expect("Render thread unexpectedly gone");
+
+    // Sleep one second to show off the finished thing
+    std::thread::sleep(Duration::from_secs(1));
+
+    // Drop tx, stops render thread
+    drop(tx);
+    render_thread.join().expect("Failed to join render thread");
 }

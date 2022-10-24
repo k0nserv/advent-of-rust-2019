@@ -9,6 +9,7 @@ edition = "2018"
 [dependencies]
 itertools = "0.8.2"
 ansi_term = "0.12"
+thread-priority = "0.8.2"
 
 [dev-dependencies]
 criterion = "0.3"
