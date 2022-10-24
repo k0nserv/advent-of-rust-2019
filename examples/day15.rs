@@ -219,13 +219,16 @@ fn run_render_thread(rx: mpsc::Receiver<Diff>, use_synchronized_output: bool) {
     clear_screen(&mut handle);
     set_cursor_visiblity(false, &mut handle);
 
-    loop {
-        match rx.try_recv() {
-            Ok(commands) => print_diffs(&commands, &mut handle, true),
-            Err(mpsc::TryRecvError::Empty) => {
-                /* No action needed, currently rendered view is up to date */
+    'outer: loop {
+        loop {
+            match rx.try_recv() {
+                Ok(commands) => print_diffs(&commands, &mut handle, use_synchronized_output),
+                Err(mpsc::TryRecvError::Empty) => {
+                    break;
+                    /* No action needed, currently rendered view is up to date */
+                }
+                Err(mpsc::TryRecvError::Disconnected) => break 'outer,
             }
-            Err(mpsc::TryRecvError::Disconnected) => break,
         }
 
         thread::sleep(RENDER_TICK_RATE);
