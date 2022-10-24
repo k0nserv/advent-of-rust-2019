@@ -3,8 +3,8 @@ use std::collections::HashSet;
 use std::convert::TryFrom;
 use std::io::Write;
 use std::sync::mpsc;
-use std::thread;
 use std::time::Duration;
+use std::{env, thread};
 
 use ansi_term::Color::{Black, Blue, Green, Red, White, Yellow};
 use ansi_term::{ANSIByteString, ANSIByteStrings, Style};
@@ -109,11 +109,15 @@ fn world_to_sprite_map(
         .collect()
 }
 
-fn diff_sprites(current: &[Vec<Sprite>], new: &[Vec<Sprite>]) -> Diff {
+fn diff_sprites(current: &[Vec<Sprite>], new: &[Vec<Sprite>], force_diff: bool) -> Diff {
     (0..new.len())
         .flat_map(|y| {
             (0..new[y].len()).filter_map(move |x| {
                 let old = current.get(y).and_then(|inner| inner.get(x));
+
+                if (x < 5 && y < 2) && force_diff {
+                    return Some(((x, y), new[y][x]));
+                }
 
                 if old
                     .map(|&old_sprite| old_sprite != new[y][x])
@@ -169,6 +173,7 @@ fn explore_world(
     input: &str,
     sleep_duration: Duration,
     tx: mpsc::Sender<Diff>,
+    use_synchronized_output: bool,
 ) -> (World, Vec<Vec<Sprite>>, mpsc::Sender<Diff>) {
     let program: Vec<isize> = parse_custom_separated(input, ",").collect();
     let next_input: RefCell<Direction> = RefCell::new(Direction::North);
@@ -186,7 +191,7 @@ fn explore_world(
         world.update(direction, status);
 
         let sprites = world_to_sprite_map(&world, world.done_exploring(), None, None);
-        let diff = diff_sprites(&last_sprite_map, &sprites);
+        let diff = diff_sprites(&last_sprite_map, &sprites, !use_synchronized_output);
         tx.send(diff).expect("Render thread unexpectedly gone");
         last_sprite_map = sprites;
         std::thread::sleep(sleep_duration);
@@ -201,7 +206,7 @@ fn explore_world(
     (world, last_sprite_map, tx)
 }
 
-fn run_render_thread(rx: mpsc::Receiver<Diff>) {
+fn run_render_thread(rx: mpsc::Receiver<Diff>, use_synchronized_output: bool) {
     set_thread_priority_and_policy(
         thread_native_id(),
         ThreadPriority::Crossplatform(ThreadPriorityValue::try_from(40).unwrap()),
@@ -231,11 +236,16 @@ fn run_render_thread(rx: mpsc::Receiver<Diff>) {
 
 fn main() {
     let file = load_file("day15.txt");
+    let use_synchronized_output = env::var("USE_SO")
+        .map(|v| v.to_lowercase())
+        .map(|v| v == "true" || v == "1")
+        .unwrap_or(false);
 
     let (tx, rx) = mpsc::channel::<Diff>();
-    let render_thread = thread::spawn(move || run_render_thread(rx));
+    let render_thread = thread::spawn(move || run_render_thread(rx, use_synchronized_output));
 
-    let (world, mut last_sprite_map, tx) = explore_world(&file, SIMULATION_TICK_RATE, tx);
+    let (world, mut last_sprite_map, tx) =
+        explore_world(&file, SIMULATION_TICK_RATE, tx, use_synchronized_output);
     let mut path = world
         .shortest_path(Default::default(), world.oxygen_location.unwrap())
         .unwrap();
@@ -246,7 +256,7 @@ fn main() {
         let partial_path: HashSet<Location> = path.iter().take(i).cloned().collect();
         let sprites =
             world_to_sprite_map(&world, world.done_exploring(), Some(&partial_path), None);
-        let diff = diff_sprites(&last_sprite_map, &sprites);
+        let diff = diff_sprites(&last_sprite_map, &sprites, !use_synchronized_output);
         tx.send(diff).expect("Render thread unexpectedly gone");
         last_sprite_map = sprites;
         std::thread::sleep(SIMULATION_TICK_RATE);
@@ -259,7 +269,7 @@ fn main() {
         Some(&path.iter().cloned().collect()),
         None,
     );
-    let diff = diff_sprites(&last_sprite_map, &sprites);
+    let diff = diff_sprites(&last_sprite_map, &sprites, !use_synchronized_output);
     tx.send(diff).expect("Render thread unexpectedly gone");
     last_sprite_map = sprites;
 
@@ -275,7 +285,7 @@ fn main() {
 
     loop {
         let sprites = world_to_sprite_map(&world, world.done_exploring(), None, Some(&oxidized));
-        let diff = diff_sprites(&last_sprite_map, &sprites);
+        let diff = diff_sprites(&last_sprite_map, &sprites, !use_synchronized_output);
         tx.send(diff).expect("Render thread unexpectedly gone");
         last_sprite_map = sprites;
         std::thread::sleep(SIMULATION_TICK_RATE);
@@ -295,7 +305,7 @@ fn main() {
 
     // Prevent off by one
     let sprites = world_to_sprite_map(&world, world.done_exploring(), None, Some(&oxidized));
-    let diff = diff_sprites(&last_sprite_map, &sprites);
+    let diff = diff_sprites(&last_sprite_map, &sprites, !use_synchronized_output);
     tx.send(diff).expect("Render thread unexpectedly gone");
 
     // Sleep one second to show off the finished thing
